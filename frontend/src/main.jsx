@@ -8,9 +8,9 @@ import './index.css';
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between">
-      <Navbar />
+      
       <App />
-      <Footer />
+      
     </div>
   </React.StrictMode>,
 );

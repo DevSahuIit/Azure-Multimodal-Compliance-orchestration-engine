@@ -121,152 +121,202 @@ export default function AuditFormApp() {
   };
 
   // ------------------------------------------------------------------
-  // AUTHENTICATION SCREENS (Ataraxis Theme Compliant)
+  // LUNAW DESIGN AUTHENTICATION CARD
   // ------------------------------------------------------------------
   if (!user) {
     return (
-      <div className="w-full flex items-center justify-center p-4 my-auto">
-        <div className="w-full max-w-md bg-slate-900/90 border border-white/10 rounded-3xl p-8 shadow-2xl space-y-6 backdrop-blur-sm">
+      <div className="w-full max-w-4xl mx-auto my-8 p-4">
+        <div className="grid grid-cols-1 md:grid-cols-12 bg-[#1E293B] border border-slate-700/60 rounded-3xl overflow-hidden shadow-2xl">
           
-          {/* Header */}
-          <div className="text-center space-y-2">
-            <div className="inline-flex items-center justify-center w-12 h-12 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-emerald-400 mb-1">
-              <ShieldCheck className="w-7 h-7" />
+          {/* Left Brand Hero Panel (Lunaw Design) */}
+          <div className="md:col-span-5 bg-gradient-to-br from-amber-500/20 via-slate-900 to-slate-900 p-8 flex flex-col justify-between border-b md:border-b-0 md:border-r border-slate-700/60 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none"></div>
+            
+            <div className="space-y-6 relative z-10">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-500 text-slate-950 font-bold shadow-lg shadow-amber-500/20">
+                  <ShieldCheck className="w-6 h-6 text-slate-950 stroke-[2.5]" />
+                </div>
+                <span className="text-xl font-bold tracking-tight text-white">Lunaw</span>
+              </div>
+
+              <div className="space-y-2 pt-6">
+                <h2 className="text-2xl font-extrabold text-white tracking-tight leading-tight">
+                  Automated Multi-Modal Compliance Verification
+                </h2>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Real-time policy reasoning, multi-modal video parsing, and automated audit trails for modern enterprise architectures.
+                </p>
+              </div>
             </div>
-            <h1 className="text-2xl font-extrabold text-white tracking-tight">
-              {authMode === 'login' && 'Welcome Back'}
-              {authMode === 'signup' && 'Create Your Account'}
-              {authMode === 'forgot' && 'Reset Password'}
-              {authMode === 'reset' && 'Enter Reset Code'}
-            </h1>
-            <p className="text-xs text-slate-400">
-              {authMode === 'login' && 'Sign in to access your video compliance audits'}
-              {authMode === 'signup' && 'Join Brand Guardian AI workspace today'}
-              {authMode === 'forgot' && 'Enter your registered email to receive a recovery code'}
-              {authMode === 'reset' && 'Enter the 6-character code and your new password'}
-            </p>
+
+            <div className="pt-8 relative z-10">
+              <div className="p-4 rounded-2xl bg-slate-800/60 border border-slate-700/50 backdrop-blur-sm space-y-1">
+                <p className="text-xs font-semibold text-amber-400">⚡ Instant Audit Engine</p>
+                <p className="text-[11px] text-slate-400">Extracts OCR, transcriptions, and compliance rule breaks automatically.</p>
+              </div>
+            </div>
           </div>
 
-          {/* Feedback Banners */}
-          {authError && <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-xs text-rose-400 font-medium text-center">{authError}</div>}
-          {authSuccess && <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-xs text-emerald-400 font-medium text-center">{authSuccess}</div>}
-
-          {/* LOGIN FORM */}
-          {authMode === 'login' && (
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Email Address</label>
-                <div className="relative">
-                  <Mail className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
-                  <input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="name@company.com" className="w-full bg-slate-800/60 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-emerald-500" />
-                </div>
+          {/* Right Interactive Form Area */}
+          <div className="md:col-span-7 p-8 bg-[#0F172A] flex flex-col justify-center space-y-6">
+            
+            {/* Lunaw Segmented Switcher */}
+            {(authMode === 'login' || authMode === 'signup') && (
+              <div className="flex bg-slate-800/70 p-1 rounded-2xl border border-slate-700/60 w-full">
+                <button
+                  type="button"
+                  onClick={() => { setAuthMode('login'); setAuthError(''); setAuthSuccess(''); }}
+                  className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all ${
+                    authMode === 'login' 
+                      ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 shadow-md shadow-amber-500/10' 
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Sign In
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setAuthMode('signup'); setAuthError(''); setAuthSuccess(''); }}
+                  className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all ${
+                    authMode === 'signup' 
+                      ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 shadow-md shadow-amber-500/10' 
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Sign Up
+                </button>
               </div>
+            )}
 
-              <div className="space-y-1.5">
-                <div className="flex justify-between items-center">
+            {/* Header Titles */}
+            <div className="space-y-1">
+              <h3 className="text-xl font-bold text-white tracking-tight">
+                {authMode === 'login' && 'Welcome Back'}
+                {authMode === 'signup' && 'Create Your Account'}
+                {authMode === 'forgot' && 'Reset Password'}
+                {authMode === 'reset' && 'Enter Reset Code'}
+              </h3>
+              <p className="text-xs text-slate-400">
+                {authMode === 'login' && 'Enter your registered credentials to enter the workspace.'}
+                {authMode === 'signup' && 'Fill out your profile details to get started with Lunaw.'}
+                {authMode === 'forgot' && 'Provide your email address to receive a security recovery code.'}
+                {authMode === 'reset' && 'Enter the 6-character code along with your new password.'}
+              </p>
+            </div>
+
+            {/* Banners */}
+            {authError && <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-xs text-rose-400 font-medium">{authError}</div>}
+            {authSuccess && <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-400 font-medium">{authSuccess}</div>}
+
+            {/* LOGIN FORM */}
+            {authMode === 'login' && (
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Email Address</label>
+                  <div className="relative">
+                    <Mail className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
+                    <input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="name@company.com" className="w-full bg-slate-800/80 border border-slate-700/80 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-amber-500" />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Password</label>
+                    <button type="button" onClick={() => setAuthMode('forgot')} className="text-xs font-semibold text-amber-400 hover:underline">Forgot?</button>
+                  </div>
+                  <div className="relative">
+                    <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
+                    <input type="password" required value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="w-full bg-slate-800/80 border border-slate-700/80 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-amber-500" />
+                  </div>
+                </div>
+
+                <button type="submit" disabled={authLoading} className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:brightness-110 text-slate-950 font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer shadow-lg shadow-amber-500/15">
+                  {authLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Sign In'}
+                </button>
+              </form>
+            )}
+
+            {/* SIGN UP FORM */}
+            {authMode === 'signup' && (
+              <form onSubmit={handleSignUp} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Full Name</label>
+                  <div className="relative">
+                    <User className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
+                    <input type="text" required value={fullName} onChange={e => setFullName(e.target.value)} placeholder="John Doe" className="w-full bg-slate-800/80 border border-slate-700/80 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-amber-500" />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Email Address</label>
+                  <div className="relative">
+                    <Mail className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
+                    <input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="name@company.com" className="w-full bg-slate-800/80 border border-slate-700/80 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-amber-500" />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Password</label>
-                  <button type="button" onClick={() => setAuthMode('forgot')} className="text-xs text-emerald-400 hover:underline">Forgot password?</button>
+                  <div className="relative">
+                    <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
+                    <input type="password" required value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="w-full bg-slate-800/80 border border-slate-700/80 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-amber-500" />
+                  </div>
                 </div>
-                <div className="relative">
-                  <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
-                  <input type="password" required value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="w-full bg-slate-800/60 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-emerald-500" />
+
+                <button type="submit" disabled={authLoading} className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:brightness-110 text-slate-950 font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer shadow-lg shadow-amber-500/15">
+                  {authLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Create Account'}
+                </button>
+              </form>
+            )}
+
+            {/* FORGOT PASSWORD FORM */}
+            {authMode === 'forgot' && (
+              <form onSubmit={handleForgotPassword} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Email Address</label>
+                  <div className="relative">
+                    <Mail className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
+                    <input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="name@company.com" className="w-full bg-slate-800/80 border border-slate-700/80 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-amber-500" />
+                  </div>
                 </div>
-              </div>
 
-              <button type="submit" disabled={authLoading} className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer shadow-lg shadow-emerald-500/20">
-                {authLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Sign In'}
-              </button>
+                <button type="submit" disabled={authLoading} className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:brightness-110 text-slate-950 font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer">
+                  {authLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Send Recovery Code'}
+                </button>
 
-              <div className="text-center pt-2">
-                <span className="text-xs text-slate-400">Don't have an account? </span>
-                <button type="button" onClick={() => setAuthMode('signup')} className="text-xs font-semibold text-emerald-400 hover:underline">Sign Up</button>
-              </div>
-            </form>
-          )}
-
-          {/* SIGN UP FORM */}
-          {authMode === 'signup' && (
-            <form onSubmit={handleSignUp} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Full Name</label>
-                <div className="relative">
-                  <User className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
-                  <input type="text" required value={fullName} onChange={e => setFullName(e.target.value)} placeholder="John Doe" className="w-full bg-slate-800/60 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-emerald-500" />
+                <div className="text-center pt-2">
+                  <button type="button" onClick={() => setAuthMode('login')} className="text-xs text-slate-400 hover:underline">Return to Login</button>
                 </div>
-              </div>
+              </form>
+            )}
 
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Email Address</label>
-                <div className="relative">
-                  <Mail className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
-                  <input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="name@company.com" className="w-full bg-slate-800/60 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-emerald-500" />
+            {/* RESET PASSWORD FORM */}
+            {authMode === 'reset' && (
+              <form onSubmit={handleResetPassword} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Reset Code</label>
+                  <div className="relative">
+                    <KeyRound className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
+                    <input type="text" required value={resetToken} onChange={e => setResetToken(e.target.value)} placeholder="6-character code" className="w-full bg-slate-800/80 border border-slate-700/80 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-amber-500 font-mono" />
+                  </div>
                 </div>
-              </div>
 
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Password</label>
-                <div className="relative">
-                  <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
-                  <input type="password" required value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="w-full bg-slate-800/60 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-emerald-500" />
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300">New Password</label>
+                  <div className="relative">
+                    <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
+                    <input type="password" required value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="w-full bg-slate-800/80 border border-slate-700/80 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-amber-500" />
+                  </div>
                 </div>
-              </div>
 
-              <button type="submit" disabled={authLoading} className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer shadow-lg shadow-emerald-500/20">
-                {authLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Create Account'}
-              </button>
+                <button type="submit" disabled={authLoading} className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:brightness-110 text-slate-950 font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer">
+                  {authLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Update Password'}
+                </button>
+              </form>
+            )}
 
-              <div className="text-center pt-2">
-                <span className="text-xs text-slate-400">Already registered? </span>
-                <button type="button" onClick={() => setAuthMode('login')} className="text-xs font-semibold text-emerald-400 hover:underline">Log In</button>
-              </div>
-            </form>
-          )}
-
-          {/* FORGOT PASSWORD FORM */}
-          {authMode === 'forgot' && (
-            <form onSubmit={handleForgotPassword} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Email Address</label>
-                <div className="relative">
-                  <Mail className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
-                  <input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="name@company.com" className="w-full bg-slate-800/60 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-emerald-500" />
-                </div>
-              </div>
-
-              <button type="submit" disabled={authLoading} className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer">
-                {authLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Send Reset Code'}
-              </button>
-
-              <div className="text-center pt-2">
-                <button type="button" onClick={() => setAuthMode('login')} className="text-xs text-slate-400 hover:underline">Back to Login</button>
-              </div>
-            </form>
-          )}
-
-          {/* RESET PASSWORD FORM */}
-          {authMode === 'reset' && (
-            <form onSubmit={handleResetPassword} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Reset Code</label>
-                <div className="relative">
-                  <KeyRound className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
-                  <input type="text" required value={resetToken} onChange={e => setResetToken(e.target.value)} placeholder="6-character code" className="w-full bg-slate-800/60 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-emerald-500 font-mono" />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300">New Password</label>
-                <div className="relative">
-                  <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
-                  <input type="password" required value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="w-full bg-slate-800/60 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-emerald-500" />
-                </div>
-              </div>
-
-              <button type="submit" disabled={authLoading} className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer">
-                {authLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Update Password'}
-              </button>
-            </form>
-          )}
+          </div>
 
         </div>
       </div>
@@ -274,18 +324,18 @@ export default function AuditFormApp() {
   }
 
   // ------------------------------------------------------------------
-  // AUDIT WORKSPACE SCREEN (Flexible layout embedded inside main container)
+  // LOGGED-IN AUDIT WORKSPACE (Matching Lunaw Theme)
   // ------------------------------------------------------------------
   return (
-    <div className="w-full max-w-7xl mx-auto my-6 flex flex-col md:flex-row gap-6 min-h-[600px] border border-white/10 rounded-3xl bg-slate-900/60 backdrop-blur-md overflow-hidden shadow-2xl">
+    <div className="w-full max-w-7xl mx-auto my-6 flex flex-col md:flex-row gap-6 min-h-[600px] border border-slate-700/60 rounded-3xl bg-[#1E293B] overflow-hidden shadow-2xl">
       
-      {/* LEFT SIDEBAR: History mapped to User */}
-      <aside className="w-full md:w-80 bg-slate-900/80 border-b md:border-b-0 md:border-r border-slate-800 p-5 flex flex-col justify-between flex-shrink-0">
+      {/* Sidebar History */}
+      <aside className="w-full md:w-80 bg-[#0F172A] border-b md:border-b-0 md:border-r border-slate-700/60 p-5 flex flex-col justify-between flex-shrink-0">
         <div className="space-y-6">
-          <div className="flex items-center justify-between px-2">
+          <div className="flex items-center justify-between px-1">
             <div className="flex items-center gap-2">
-              <ShieldCheck className="w-6 h-6 text-emerald-400" />
-              <span className="font-bold text-base text-white">Brand Guardian</span>
+              <ShieldCheck className="w-6 h-6 text-amber-500" />
+              <span className="font-bold text-base text-white">Lunaw Portal</span>
             </div>
             <button onClick={handleLogout} title="Log Out" className="p-1.5 text-slate-400 hover:text-rose-400 transition cursor-pointer">
               <LogOut className="w-4 h-4" />
@@ -293,9 +343,9 @@ export default function AuditFormApp() {
           </div>
 
           {/* User Account Info */}
-          <div className="bg-slate-800/40 border border-slate-800 rounded-2xl p-3 flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-emerald-500/10 text-emerald-400 font-bold flex items-center justify-center text-xs border border-emerald-500/20">
-              {user.full_name[0]}
+          <div className="bg-slate-800/50 border border-slate-700/60 rounded-2xl p-3 flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-amber-500 to-orange-500 text-slate-950 font-bold flex items-center justify-center text-xs">
+              {user.full_name ? user.full_name[0] : 'U'}
             </div>
             <div className="truncate">
               <p className="text-xs font-semibold text-white truncate">{user.full_name}</p>
@@ -305,7 +355,7 @@ export default function AuditFormApp() {
 
           {/* Audit History List */}
           <div className="space-y-2">
-            <div className="flex items-center gap-1.5 px-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+            <div className="flex items-center gap-1.5 px-1 text-xs font-semibold text-slate-400 uppercase tracking-wider">
               <History className="w-3.5 h-3.5" /> Past Audits ({sessions.length})
             </div>
 
@@ -318,11 +368,11 @@ export default function AuditFormApp() {
                     setVideoUrl(sess.video_url);
                     setAuditStep(3);
                   }}
-                  className="w-full text-left bg-slate-800/30 hover:bg-slate-800/80 border border-slate-800 rounded-xl p-3 text-xs transition cursor-pointer space-y-1 block"
+                  className="w-full text-left bg-slate-800/40 hover:bg-slate-800/90 border border-slate-700/50 rounded-xl p-3 text-xs transition cursor-pointer space-y-1 block"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-mono text-[10px] text-emerald-400">{sess.session_id.slice(0, 8)}</span>
-                    <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400">
+                    <span className="font-mono text-[10px] text-amber-400">{sess.session_id.slice(0, 8)}</span>
+                    <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
                       {sess.status}
                     </span>
                   </div>
@@ -339,21 +389,21 @@ export default function AuditFormApp() {
 
         <button
           onClick={() => { setAuditStep(1); setVideoUrl(''); setAuditResult(null); }}
-          className="w-full mt-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 rounded-xl flex items-center justify-center gap-2 text-xs transition cursor-pointer shadow-lg shadow-emerald-500/10"
+          className="w-full mt-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:brightness-110 text-slate-950 font-bold py-2.5 rounded-xl flex items-center justify-center gap-2 text-xs transition cursor-pointer shadow-md shadow-amber-500/15"
         >
           <RefreshCw className="w-3.5 h-3.5" /> New Audit Request
         </button>
       </aside>
 
-      {/* WORKSPACE CONTENT */}
-      <main className="flex-1 flex items-center justify-center p-6 md:p-8">
-        <div className="w-full max-w-xl bg-slate-900 border border-slate-800 rounded-2xl p-6 md:p-8 shadow-2xl">
+      {/* Main Panel Content */}
+      <main className="flex-1 flex items-center justify-center p-6 md:p-8 bg-[#0F172A]">
+        <div className="w-full max-w-xl bg-[#1E293B] border border-slate-700/60 rounded-2xl p-6 md:p-8 shadow-xl">
           
           {auditStep === 1 && (
             <div className="space-y-6">
               <div>
                 <h2 className="text-2xl font-bold text-white">Start Video Audit</h2>
-                <p className="text-slate-400 text-sm mt-1">Audit promotional media against brand compliance rules.</p>
+                <p className="text-slate-400 text-sm mt-1">Audit promotional media against compliance rules.</p>
               </div>
 
               <div className="space-y-2">
@@ -365,12 +415,12 @@ export default function AuditFormApp() {
                     value={videoUrl}
                     onChange={(e) => setVideoUrl(e.target.value)}
                     placeholder="https://www.youtube.com/watch?v=..."
-                    className="w-full bg-slate-800/60 border border-slate-700 rounded-xl py-3 pl-11 pr-4 text-slate-100 focus:outline-none focus:border-emerald-500 text-sm"
+                    className="w-full bg-slate-800/80 border border-slate-700 rounded-xl py-3 pl-11 pr-4 text-slate-100 focus:outline-none focus:border-amber-500 text-sm"
                   />
                 </div>
               </div>
 
-              <button onClick={() => setAuditStep(2)} disabled={!videoUrl.trim()} className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-50">
+              <button onClick={() => setAuditStep(2)} disabled={!videoUrl.trim()} className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:brightness-110 text-slate-950 font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-50">
                 Continue <ArrowRight className="w-4 h-4" />
               </button>
             </div>
@@ -380,17 +430,17 @@ export default function AuditFormApp() {
             <div className="space-y-6">
               <div>
                 <h2 className="text-xl font-bold text-white">Confirm Audit</h2>
-                <p className="text-slate-400 text-xs mt-1">Run multimodal extraction and Groq compliance reasoning.</p>
+                <p className="text-slate-400 text-xs mt-1">Run multimodal extraction and compliance reasoning.</p>
               </div>
 
-              <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-3.5 text-xs">
+              <div className="bg-slate-800/80 border border-slate-700/80 rounded-xl p-3.5 text-xs">
                 <span className="text-slate-400 font-semibold block mb-1">TARGET URL</span>
-                <p className="text-emerald-300 font-mono truncate">{videoUrl}</p>
+                <p className="text-amber-400 font-mono truncate">{videoUrl}</p>
               </div>
 
               <div className="flex gap-3">
                 <button onClick={() => setAuditStep(1)} className="w-1/3 border border-slate-700 text-slate-300 py-2.5 rounded-xl text-xs hover:bg-slate-800">Back</button>
-                <button onClick={handleRunAudit} disabled={auditLoading} className="w-2/3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 rounded-xl text-xs flex justify-center items-center gap-2 cursor-pointer">
+                <button onClick={handleRunAudit} disabled={auditLoading} className="w-2/3 bg-gradient-to-r from-amber-500 to-orange-500 hover:brightness-110 text-slate-950 font-bold py-2.5 rounded-xl text-xs flex justify-center items-center gap-2 cursor-pointer">
                   {auditLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Run Pipeline'}
                 </button>
               </div>
@@ -399,14 +449,14 @@ export default function AuditFormApp() {
 
           {auditStep === 3 && auditResult && (
             <div className="space-y-4">
-              <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <div className="flex justify-between items-center border-b border-slate-700/60 pb-3">
                 <h2 className="text-lg font-bold text-white">Session Findings</h2>
-                <span className="text-[10px] font-mono bg-emerald-500/10 text-emerald-400 px-2 py-1 rounded border border-emerald-500/20">
+                <span className="text-[10px] font-mono bg-amber-500/10 text-amber-400 px-2 py-1 rounded border border-amber-500/20">
                   {auditResult.session_id}
                 </span>
               </div>
 
-              <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 text-xs font-mono text-slate-300 max-h-80 overflow-y-auto whitespace-pre-wrap">
+              <div className="bg-[#0F172A] border border-slate-700/60 rounded-xl p-4 text-xs font-mono text-slate-300 max-h-80 overflow-y-auto whitespace-pre-wrap">
                 {auditResult.final_report}
               </div>
             </div>
