@@ -1,243 +1,420 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { 
-  Youtube, 
   ShieldCheck, 
-  AlertTriangle, 
-  CheckCircle2, 
-  Loader2, 
+  Mail, 
+  Lock, 
+  User, 
+  KeyRound, 
   ArrowRight, 
-  RefreshCw 
+  LogOut, 
+  History, 
+  Youtube, 
+  Loader2, 
+  RefreshCw,
+  CheckCircle2
 } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export default function AuditFormApp() {
-  const [step, setStep] = useState(1);
+  // Authentication State
+  const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('guardian_user') || 'null'));
+  const [authMode, setAuthMode] = useState('login'); // 'login' | 'signup' | 'forgot' | 'reset'
+  
+  // Auth Form Fields
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [resetToken, setResetToken] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [authSuccess, setAuthSuccess] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+
+  // Workspace Audit State
+  const [sessions, setSessions] = useState([]);
   const [videoUrl, setVideoUrl] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [auditStep, setAuditStep] = useState(1);
+  const [auditLoading, setAuditLoading] = useState(false);
   const [auditResult, setAuditResult] = useState(null);
 
-  // Step 1: Validate YouTube URL
-  const handleNext = () => {
-    if (!videoUrl.trim()) {
-      setError('Please enter a YouTube video URL.');
-      return;
-    }
-    if (!videoUrl.includes('youtube.com') && !videoUrl.includes('youtu.be')) {
-      setError('Please enter a valid YouTube link (e.g., https://www.youtube.com/watch?v=...).');
-      return;
-    }
-    setError('');
-    setStep(2);
-  };
-
-  // Step 2: Submit to FastAPI Backend (/audit)
-  const handleAudit = async () => {
-    setLoading(true);
-    setError('');
-
+  // Fetch session history for logged-in user
+  const fetchHistory = async (userEmail) => {
     try {
-      // 10-minute timeout for Azure Video Indexer processing
-      const response = await axios.post(
-        `${API_BASE_URL}/audit`,
-        { video_url: videoUrl },
-        { timeout: 600000 } 
-      );
-
-      setAuditResult(response.data);
-      setStep(3);
+      const res = await axios.get(`${API_BASE_URL}/sessions?email=${encodeURIComponent(userEmail)}`);
+      setSessions(res.data);
     } catch (err) {
-      if (err.code === 'ECONNABORTED') {
-        setError('Audit request timed out. Azure Video Indexer is taking longer than expected.');
-      } else {
-        setError(err.response?.data?.detail || 'Failed to complete compliance audit pipeline.');
-      }
-    } finally {
-      setLoading(false);
+      console.error('Failed to load history:', err);
     }
   };
 
-  const handleReset = () => {
-    setStep(1);
-    setVideoUrl('');
-    setAuditResult(null);
-    setError('');
+  useEffect(() => {
+    if (user?.email) fetchHistory(user.email);
+  }, [user]);
+
+  // Auth Handlers
+  const handleSignUp = async (e) => {
+    e.preventDefault();
+    setAuthError(''); setAuthLoading(true);
+    try {
+      await axios.post(`${API_BASE_URL}/auth/signup`, { full_name: fullName, email, password });
+      setAuthSuccess('Account created! Logging you in...');
+      setTimeout(() => handleLogin(e), 1000);
+    } catch (err) {
+      setAuthError(err.response?.data?.detail || 'Sign up failed.');
+    } finally { setAuthLoading(false); }
   };
 
-  return (
-    <div className="w-full max-w-2xl mx-auto p-4 flex flex-col items-center">
-      {/* Brand Header */}
-      <div className="flex items-center gap-2.5 mb-6">
-        <ShieldCheck className="w-8 h-8 text-indigo-400" />
-        <span className="text-xl font-bold tracking-tight text-white">Brand Guardian AI</span>
-      </div>
+  const handleLogin = async (e) => {
+    if (e) e.preventDefault();
+    setAuthError(''); setAuthLoading(true);
+    try {
+      const res = await axios.post(`${API_BASE_URL}/auth/login`, { email, password });
+      setUser(res.data.user);
+      localStorage.setItem('guardian_user', JSON.stringify(res.data.user));
+    } catch (err) {
+      setAuthError(err.response?.data?.detail || 'Invalid email or password.');
+    } finally { setAuthLoading(false); }
+  };
 
-      <div className="w-full bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden p-6 md:p-8">
-        
-        {/* Step Progress Bar (Daily UI #082 Form Design) */}
-        {step < 3 && (
-          <div className="mb-8">
-            <div className="flex justify-between text-xs font-semibold text-slate-400 mb-2">
-              <span>STEP {step} OF 2</span>
-              <span>{step === 1 ? '50% - Target Selection' : '100% - Ready to Audit'}</span>
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    setAuthError(''); setAuthSuccess(''); setAuthLoading(true);
+    try {
+      const res = await axios.post(`${API_BASE_URL}/auth/forgot-password`, { email });
+      setAuthSuccess(`Reset code generated! Demo Code: ${res.data.demo_reset_code}`);
+      setAuthMode('reset');
+    } catch (err) {
+      setAuthError(err.response?.data?.detail || 'Failed to request password reset.');
+    } finally { setAuthLoading(false); }
+  };
+
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    setAuthError(''); setAuthSuccess(''); setAuthLoading(true);
+    try {
+      await axios.post(`${API_BASE_URL}/auth/reset-password`, { email, token: resetToken, new_password: password });
+      setAuthSuccess('Password updated successfully! Please log in.');
+      setAuthMode('login');
+    } catch (err) {
+      setAuthError(err.response?.data?.detail || 'Invalid token or reset request failed.');
+    } finally { setAuthLoading(false); }
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    localStorage.removeItem('guardian_user');
+    setAuditResult(null);
+    setSessions([]);
+  };
+
+  // Audit Trigger
+  const handleRunAudit = async () => {
+    setAuditLoading(true);
+    try {
+      const res = await axios.post(`${API_BASE_URL}/audit`, { email: user.email, video_url: videoUrl }, { timeout: 600000 });
+      setAuditResult(res.data);
+      setAuditStep(3);
+      fetchHistory(user.email);
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Audit failed.');
+    } finally { setAuditLoading(false); }
+  };
+
+  // ------------------------------------------------------------------
+  // AUTHENTICATION SCREENS (Dribbble Modern Dark Layout)
+  // ------------------------------------------------------------------
+  if (!user) {
+    return (
+      <div className="min-h-screen w-screen bg-slate-950 flex items-center justify-center p-4">
+        <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl space-y-6">
+          
+          {/* Header */}
+          <div className="text-center space-y-2">
+            <div className="inline-flex items-center justify-center w-12 h-12 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl text-indigo-400 mb-1">
+              <ShieldCheck className="w-7 h-7" />
             </div>
-            <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-              <div 
-                className="bg-indigo-500 h-full transition-all duration-300 ease-out" 
-                style={{ width: step === 1 ? '50%' : '100%' }}
-              />
-            </div>
+            <h1 className="text-2xl font-extrabold text-white tracking-tight">
+              {authMode === 'login' && 'Welcome Back'}
+              {authMode === 'signup' && 'Create Your Account'}
+              {authMode === 'forgot' && 'Reset Password'}
+              {authMode === 'reset' && 'Enter Reset Code'}
+            </h1>
+            <p className="text-xs text-slate-400">
+              {authMode === 'login' && 'Sign in to access your video compliance audits'}
+              {authMode === 'signup' && 'Join Brand Guardian AI workspace today'}
+              {authMode === 'forgot' && 'Enter your registered email to receive a recovery code'}
+              {authMode === 'reset' && 'Enter the 6-character code and your new password'}
+            </p>
           </div>
-        )}
 
-        {/* STEP 1: Video Input */}
-        {step === 1 && (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-2xl font-bold text-white">Video Compliance Audit</h2>
-              <p className="text-slate-400 text-sm mt-1">
-                Provide a YouTube promotional video URL to analyze spoken claims and on-screen disclaimers.
-              </p>
-            </div>
+          {/* Feedback Banners */}
+          {authError && <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-xs text-rose-400 font-medium text-center">{authError}</div>}
+          {authSuccess && <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-xs text-emerald-400 font-medium text-center">{authSuccess}</div>}
 
-            <div className="space-y-2">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
-                YouTube Link
-              </label>
-              <div className="relative">
-                <Youtube className="absolute left-3.5 top-3.5 w-5 h-5 text-rose-500" />
-                <input
-                  type="url"
-                  value={videoUrl}
-                  onChange={(e) => setVideoUrl(e.target.value)}
-                  placeholder="https://www.youtube.com/watch?v=..."
-                  className="w-full bg-slate-800/60 border border-slate-700 rounded-xl py-3 pl-11 pr-4 text-slate-100 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition text-sm"
-                />
+          {/* LOGIN FORM */}
+          {authMode === 'login' && (
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Email Address</label>
+                <div className="relative">
+                  <Mail className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
+                  <input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="name@company.com" className="w-full bg-slate-800/60 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-indigo-500" />
+                </div>
               </div>
-              {error && <p className="text-xs text-rose-400 font-medium mt-1">{error}</p>}
-            </div>
 
-            <button
-              onClick={handleNext}
-              className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer shadow-lg shadow-indigo-600/20"
-            >
-              Continue <ArrowRight className="w-4 h-4" />
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Password</label>
+                  <button type="button" onClick={() => setAuthMode('forgot')} className="text-xs text-indigo-400 hover:underline">Forgot password?</button>
+                </div>
+                <div className="relative">
+                  <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
+                  <input type="password" required value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="w-full bg-slate-800/60 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-indigo-500" />
+                </div>
+              </div>
+
+              <button type="submit" disabled={authLoading} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer shadow-lg shadow-indigo-600/20">
+                {authLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Sign In'}
+              </button>
+
+              <div className="text-center pt-2">
+                <span className="text-xs text-slate-400">Don't have an account? </span>
+                <button type="button" onClick={() => setAuthMode('signup')} className="text-xs font-semibold text-indigo-400 hover:underline">Sign Up</button>
+              </div>
+            </form>
+          )}
+
+          {/* SIGN UP FORM */}
+          {authMode === 'signup' && (
+            <form onSubmit={handleSignUp} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Full Name</label>
+                <div className="relative">
+                  <User className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
+                  <input type="text" required value={fullName} onChange={e => setFullName(e.target.value)} placeholder="John Doe" className="w-full bg-slate-800/60 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-indigo-500" />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Email Address</label>
+                <div className="relative">
+                  <Mail className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
+                  <input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="name@company.com" className="w-full bg-slate-800/60 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-indigo-500" />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Password</label>
+                <div className="relative">
+                  <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
+                  <input type="password" required value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="w-full bg-slate-800/60 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-indigo-500" />
+                </div>
+              </div>
+
+              <button type="submit" disabled={authLoading} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer shadow-lg shadow-indigo-600/20">
+                {authLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Create Account'}
+              </button>
+
+              <div className="text-center pt-2">
+                <span className="text-xs text-slate-400">Already registered? </span>
+                <button type="button" onClick={() => setAuthMode('login')} className="text-xs font-semibold text-indigo-400 hover:underline">Log In</button>
+              </div>
+            </form>
+          )}
+
+          {/* FORGOT PASSWORD FORM */}
+          {authMode === 'forgot' && (
+            <form onSubmit={handleForgotPassword} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Email Address</label>
+                <div className="relative">
+                  <Mail className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
+                  <input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="name@company.com" className="w-full bg-slate-800/60 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-indigo-500" />
+                </div>
+              </div>
+
+              <button type="submit" disabled={authLoading} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer">
+                {authLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Send Reset Code'}
+              </button>
+
+              <div className="text-center pt-2">
+                <button type="button" onClick={() => setAuthMode('login')} className="text-xs text-slate-400 hover:underline">Back to Login</button>
+              </div>
+            </form>
+          )}
+
+          {/* RESET PASSWORD FORM */}
+          {authMode === 'reset' && (
+            <form onSubmit={handleResetPassword} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Reset Code</label>
+                <div className="relative">
+                  <KeyRound className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
+                  <input type="text" required value={resetToken} onChange={e => setResetToken(e.target.value)} placeholder="6-character code" className="w-full bg-slate-800/60 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-indigo-500 font-mono" />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300">New Password</label>
+                <div className="relative">
+                  <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
+                  <input type="password" required value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="w-full bg-slate-800/60 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-indigo-500" />
+                </div>
+              </div>
+
+              <button type="submit" disabled={authLoading} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer">
+                {authLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Update Password'}
+              </button>
+            </form>
+          )}
+
+        </div>
+      </div>
+    );
+  }
+
+  // ------------------------------------------------------------------
+  // AUDIT WORKSPACE SCREEN (Logged in view with Left History Sidebar)
+  // ------------------------------------------------------------------
+  return (
+    <div className="flex h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden">
+      
+      {/* LEFT SIDEBAR: History mapped to User */}
+      <aside className="w-80 bg-slate-900 border-r border-slate-800 p-4 flex flex-col justify-between flex-shrink-0">
+        <div className="space-y-6">
+          <div className="flex items-center justify-between px-2">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-6 h-6 text-indigo-400" />
+              <span className="font-bold text-base text-white">Brand Guardian</span>
+            </div>
+            <button onClick={handleLogout} title="Log Out" className="p-1.5 text-slate-400 hover:text-rose-400 transition cursor-pointer">
+              <LogOut className="w-4 h-4" />
             </button>
           </div>
-        )}
 
-        {/* STEP 2: Preview & Confirm */}
-        {step === 2 && (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-2xl font-bold text-white">Confirm Pipeline Execution</h2>
-              <p className="text-slate-400 text-sm mt-1">
-                The video will be downloaded via yt-dlp, indexed in Azure AI Video Indexer, and audited against guidelines with Groq Llama 3.3.
-              </p>
+          {/* User Account Info */}
+          <div className="bg-slate-800/40 border border-slate-800 rounded-xl p-3 flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-indigo-600/20 text-indigo-400 font-bold flex items-center justify-center text-xs border border-indigo-500/20">
+              {user.full_name[0]}
             </div>
-
-            <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 text-sm space-y-2">
-              <span className="text-xs font-semibold uppercase text-slate-400">Selected Target URL</span>
-              <p className="font-mono text-indigo-300 truncate">{videoUrl}</p>
-            </div>
-
-            {error && (
-              <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-xs text-rose-400 flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            <div className="flex gap-3">
-              <button
-                type="button"
-                disabled={loading}
-                onClick={() => setStep(1)}
-                className="w-1/3 border border-slate-700 hover:bg-slate-800 text-slate-300 font-medium py-3 rounded-xl transition cursor-pointer disabled:opacity-50"
-              >
-                Back
-              </button>
-              <button
-                type="button"
-                disabled={loading}
-                onClick={handleAudit}
-                className="w-2/3 bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer shadow-lg shadow-indigo-600/20 disabled:opacity-50"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>Processing Indexer...</span>
-                  </>
-                ) : (
-                  <span>Run Audit Pipeline</span>
-                )}
-              </button>
+            <div className="truncate">
+              <p className="text-xs font-semibold text-white truncate">{user.full_name}</p>
+              <p className="text-[10px] text-slate-400 truncate">{user.email}</p>
             </div>
           </div>
-        )}
 
-        {/* STEP 3: Compliance Report Display */}
-        {step === 3 && auditResult && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-              <div>
-                <h2 className="text-xl font-bold text-white">Compliance Results</h2>
-                <p className="text-xs font-mono text-slate-400 mt-0.5">Session: {auditResult.session_id}</p>
-              </div>
-              <div className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
-                auditResult.status?.toLowerCase() === 'pass' 
-                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
-                  : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-              }`}>
-                STATUS: {auditResult.status || 'COMPLETED'}
-              </div>
+          {/* Audit History List */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5 px-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              <History className="w-3.5 h-3.5" /> Past Audits ({sessions.length})
             </div>
 
-            {/* Violations List */}
-            <div>
-              <h3 className="text-xs font-semibold uppercase text-slate-400 mb-3">Detected Issues</h3>
-              {auditResult.compliance_results && auditResult.compliance_results.length > 0 ? (
-                <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
-                  {auditResult.compliance_results.map((issue, idx) => (
-                    <div key={idx} className="bg-slate-800/60 border border-slate-700/80 rounded-xl p-3.5 text-sm space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-indigo-400 uppercase">{issue.category}</span>
-                        <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-rose-500/20 text-rose-300">
-                          {issue.severity}
-                        </span>
-                      </div>
-                      <p className="text-slate-300 text-xs">{issue.description}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 text-sm">
-                  <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
-                  <span>No compliance violations detected. Video adheres to guidelines.</span>
-                </div>
+            <div className="space-y-1.5 max-h-[calc(100vh-280px)] overflow-y-auto pr-1">
+              {sessions.map((sess) => (
+                <button
+                  key={sess.session_id}
+                  onClick={() => {
+                    setAuditResult({ session_id: sess.session_id, status: sess.status, final_report: sess.final_report });
+                    setVideoUrl(sess.video_url);
+                    setAuditStep(3);
+                  }}
+                  className="w-full text-left bg-slate-800/30 hover:bg-slate-800/80 border border-slate-800 rounded-xl p-3 text-xs transition cursor-pointer space-y-1 block"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-[10px] text-indigo-400">{sess.session_id.slice(0, 8)}</span>
+                    <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400">
+                      {sess.status}
+                    </span>
+                  </div>
+                  <p className="text-slate-300 truncate text-[11px] font-mono">{sess.video_url}</p>
+                </button>
+              ))}
+
+              {sessions.length === 0 && (
+                <p className="text-xs text-slate-500 px-2 py-4 text-center">No past audits for this account.</p>
               )}
             </div>
+          </div>
+        </div>
 
-            {/* Final Markdown Summary */}
-            <div>
-              <h3 className="text-xs font-semibold uppercase text-slate-400 mb-2">Executive Summary</h3>
-              <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 text-xs text-slate-300 font-mono leading-relaxed whitespace-pre-wrap max-h-48 overflow-y-auto">
+        <button
+          onClick={() => { setAuditStep(1); setVideoUrl(''); setAuditResult(null); }}
+          className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2.5 rounded-xl flex items-center justify-center gap-2 text-xs transition cursor-pointer"
+        >
+          <RefreshCw className="w-3.5 h-3.5" /> New Audit Request
+        </button>
+      </aside>
+
+      {/* WORKSPACE CONTENT */}
+      <main className="flex-1 flex items-center justify-center p-8 overflow-y-auto">
+        <div className="w-full max-w-xl bg-slate-900 border border-slate-800 rounded-2xl p-6 md:p-8 shadow-2xl">
+          
+          {auditStep === 1 && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-2xl font-bold text-white">Start Video Audit</h2>
+                <p className="text-slate-400 text-sm mt-1">Audit promotional media against brand compliance rules.</p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase text-slate-300">YouTube URL</label>
+                <div className="relative">
+                  <Youtube className="absolute left-3.5 top-3.5 w-5 h-5 text-rose-500" />
+                  <input
+                    type="url"
+                    value={videoUrl}
+                    onChange={(e) => setVideoUrl(e.target.value)}
+                    placeholder="https://www.youtube.com/watch?v=..."
+                    className="w-full bg-slate-800/60 border border-slate-700 rounded-xl py-3 pl-11 pr-4 text-slate-100 focus:outline-none focus:border-indigo-500 text-sm"
+                  />
+                </div>
+              </div>
+
+              <button onClick={() => setAuditStep(2)} disabled={!videoUrl.trim()} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-50">
+                Continue <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {auditStep === 2 && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-bold text-white">Confirm Audit</h2>
+                <p className="text-slate-400 text-xs mt-1">Run multimodal extraction and Groq compliance reasoning.</p>
+              </div>
+
+              <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-3.5 text-xs">
+                <span className="text-slate-400 font-semibold block mb-1">TARGET URL</span>
+                <p className="text-indigo-300 font-mono truncate">{videoUrl}</p>
+              </div>
+
+              <div className="flex gap-3">
+                <button onClick={() => setAuditStep(1)} className="w-1/3 border border-slate-700 text-slate-300 py-2.5 rounded-xl text-xs">Back</button>
+                <button onClick={handleRunAudit} disabled={auditLoading} className="w-2/3 bg-indigo-600 text-white py-2.5 rounded-xl text-xs font-semibold flex justify-center items-center gap-2">
+                  {auditLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Run Pipeline'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {auditStep === 3 && auditResult && (
+            <div className="space-y-4">
+              <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+                <h2 className="text-lg font-bold text-white">Session Findings</h2>
+                <span className="text-[10px] font-mono bg-indigo-500/10 text-indigo-400 px-2 py-1 rounded border border-indigo-500/20">
+                  {auditResult.session_id}
+                </span>
+              </div>
+
+              <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 text-xs font-mono text-slate-300 max-h-80 overflow-y-auto whitespace-pre-wrap">
                 {auditResult.final_report}
               </div>
             </div>
+          )}
 
-            <button
-              onClick={handleReset}
-              className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium py-3 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer text-sm"
-            >
-              <RefreshCw className="w-4 h-4" /> Audit Another Video
-            </button>
-          </div>
-        )}
-
-      </div>
+        </div>
+      </main>
     </div>
   );
 }
