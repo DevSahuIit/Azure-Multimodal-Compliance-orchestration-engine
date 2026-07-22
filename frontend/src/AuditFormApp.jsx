@@ -11,7 +11,8 @@ import {
   History, 
   Youtube, 
   Loader2, 
-  RefreshCw
+  RefreshCw,
+  Bot
 } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -121,14 +122,14 @@ export default function AuditFormApp() {
   };
 
   // ------------------------------------------------------------------
-  // LUNAW DESIGN AUTHENTICATION CARD
+  // LOGIN / SIGNUP CARD (Vigilant Agent with Agentic AI Description)
   // ------------------------------------------------------------------
   if (!user) {
     return (
       <div className="w-full max-w-4xl mx-auto my-8 p-4">
         <div className="grid grid-cols-1 md:grid-cols-12 bg-[#1E293B] border border-slate-700/60 rounded-3xl overflow-hidden shadow-2xl">
           
-          {/* Left Brand Hero Panel (Lunaw Design) */}
+          {/* Left Hero Panel (Agentic AI Focus) */}
           <div className="md:col-span-5 bg-gradient-to-br from-amber-500/20 via-slate-900 to-slate-900 p-8 flex flex-col justify-between border-b md:border-b-0 md:border-r border-slate-700/60 relative overflow-hidden">
             <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none"></div>
             
@@ -137,31 +138,34 @@ export default function AuditFormApp() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-500 text-slate-950 font-bold shadow-lg shadow-amber-500/20">
                   <ShieldCheck className="w-6 h-6 text-slate-950 stroke-[2.5]" />
                 </div>
-                <span className="text-xl font-bold tracking-tight text-white">Lunaw</span>
+                <span className="text-xl font-bold tracking-tight text-white">Vigilant Agent</span>
               </div>
 
-              <div className="space-y-2 pt-6">
+              <div className="space-y-3 pt-4">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-500/10 border border-amber-500/20 text-[11px] font-bold text-amber-400">
+                  <Bot className="w-3.5 h-3.5" /> Agentic AI Engine
+                </span>
                 <h2 className="text-2xl font-extrabold text-white tracking-tight leading-tight">
-                  Automated Multi-Modal Compliance Verification
+                  Autonomous Multi-Modal Compliance Verification
                 </h2>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  Real-time policy reasoning, multi-modal video parsing, and automated audit trails for modern enterprise architectures.
+                  Powered by <strong className="text-amber-400 font-semibold">Agentic AI</strong> and multi-modal vision parsing. Vigilant Agent autonomously evaluates video frames, OCR text, and speech transcripts against strict policy benchmarks.
                 </p>
               </div>
             </div>
 
             <div className="pt-8 relative z-10">
               <div className="p-4 rounded-2xl bg-slate-800/60 border border-slate-700/50 backdrop-blur-sm space-y-1">
-                <p className="text-xs font-semibold text-amber-400">⚡ Instant Audit Engine</p>
-                <p className="text-[11px] text-slate-400">Extracts OCR, transcriptions, and compliance rule breaks automatically.</p>
+                <p className="text-xs font-semibold text-amber-400">🤖 Autonomous Policy Reasoning</p>
+                <p className="text-[11px] text-slate-400">Performs real-time rule checks and automated evidence logging across cloud infrastructure.</p>
               </div>
             </div>
           </div>
 
-          {/* Right Interactive Form Area */}
+          {/* Right Form Container */}
           <div className="md:col-span-7 p-8 bg-[#0F172A] flex flex-col justify-center space-y-6">
             
-            {/* Lunaw Segmented Switcher */}
+            {/* Tab Switcher */}
             {(authMode === 'login' || authMode === 'signup') && (
               <div className="flex bg-slate-800/70 p-1 rounded-2xl border border-slate-700/60 w-full">
                 <button
@@ -189,7 +193,7 @@ export default function AuditFormApp() {
               </div>
             )}
 
-            {/* Header Titles */}
+            {/* Title Header */}
             <div className="space-y-1">
               <h3 className="text-xl font-bold text-white tracking-tight">
                 {authMode === 'login' && 'Welcome Back'}
@@ -198,8 +202,8 @@ export default function AuditFormApp() {
                 {authMode === 'reset' && 'Enter Reset Code'}
               </h3>
               <p className="text-xs text-slate-400">
-                {authMode === 'login' && 'Enter your registered credentials to enter the workspace.'}
-                {authMode === 'signup' && 'Fill out your profile details to get started with Lunaw.'}
+                {authMode === 'login' && 'Enter your registered credentials to launch Vigilant Agent.'}
+                {authMode === 'signup' && 'Register to deploy Agentic AI video compliance audits.'}
                 {authMode === 'forgot' && 'Provide your email address to receive a security recovery code.'}
                 {authMode === 'reset' && 'Enter the 6-character code along with your new password.'}
               </p>
@@ -324,25 +328,25 @@ export default function AuditFormApp() {
   }
 
   // ------------------------------------------------------------------
-  // LOGGED-IN AUDIT WORKSPACE (Matching Lunaw Theme)
+  // LOGGED-IN AUDIT WORKSPACE (Vigilant Agent Portal)
   // ------------------------------------------------------------------
   return (
     <div className="w-full max-w-7xl mx-auto my-6 flex flex-col md:flex-row gap-6 min-h-[600px] border border-slate-700/60 rounded-3xl bg-[#1E293B] overflow-hidden shadow-2xl">
       
-      {/* Sidebar History */}
+      {/* Sidebar */}
       <aside className="w-full md:w-80 bg-[#0F172A] border-b md:border-b-0 md:border-r border-slate-700/60 p-5 flex flex-col justify-between flex-shrink-0">
         <div className="space-y-6">
           <div className="flex items-center justify-between px-1">
             <div className="flex items-center gap-2">
               <ShieldCheck className="w-6 h-6 text-amber-500" />
-              <span className="font-bold text-base text-white">Lunaw Portal</span>
+              <span className="font-bold text-base text-white">Vigilant Agent</span>
             </div>
             <button onClick={handleLogout} title="Log Out" className="p-1.5 text-slate-400 hover:text-rose-400 transition cursor-pointer">
               <LogOut className="w-4 h-4" />
             </button>
           </div>
 
-          {/* User Account Info */}
+          {/* User Badge */}
           <div className="bg-slate-800/50 border border-slate-700/60 rounded-2xl p-3 flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-amber-500 to-orange-500 text-slate-950 font-bold flex items-center justify-center text-xs">
               {user.full_name ? user.full_name[0] : 'U'}
@@ -353,10 +357,10 @@ export default function AuditFormApp() {
             </div>
           </div>
 
-          {/* Audit History List */}
+          {/* History */}
           <div className="space-y-2">
             <div className="flex items-center gap-1.5 px-1 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-              <History className="w-3.5 h-3.5" /> Past Audits ({sessions.length})
+              <History className="w-3.5 h-3.5" /> Agentic Audit History ({sessions.length})
             </div>
 
             <div className="space-y-1.5 max-h-[300px] md:max-h-[380px] overflow-y-auto pr-1">
@@ -402,8 +406,8 @@ export default function AuditFormApp() {
           {auditStep === 1 && (
             <div className="space-y-6">
               <div>
-                <h2 className="text-2xl font-bold text-white">Start Video Audit</h2>
-                <p className="text-slate-400 text-sm mt-1">Audit promotional media against compliance rules.</p>
+                <h2 className="text-2xl font-bold text-white">Start Agentic Video Audit</h2>
+                <p className="text-slate-400 text-sm mt-1">Multi-modal extraction with autonomous policy reasoning.</p>
               </div>
 
               <div className="space-y-2">
@@ -429,8 +433,8 @@ export default function AuditFormApp() {
           {auditStep === 2 && (
             <div className="space-y-6">
               <div>
-                <h2 className="text-xl font-bold text-white">Confirm Audit</h2>
-                <p className="text-slate-400 text-xs mt-1">Run multimodal extraction and compliance reasoning.</p>
+                <h2 className="text-xl font-bold text-white">Confirm Agent Pipeline</h2>
+                <p className="text-slate-400 text-xs mt-1">Run Agentic AI extraction and Groq compliance reasoning.</p>
               </div>
 
               <div className="bg-slate-800/80 border border-slate-700/80 rounded-xl p-3.5 text-xs">
@@ -441,7 +445,7 @@ export default function AuditFormApp() {
               <div className="flex gap-3">
                 <button onClick={() => setAuditStep(1)} className="w-1/3 border border-slate-700 text-slate-300 py-2.5 rounded-xl text-xs hover:bg-slate-800">Back</button>
                 <button onClick={handleRunAudit} disabled={auditLoading} className="w-2/3 bg-gradient-to-r from-amber-500 to-orange-500 hover:brightness-110 text-slate-950 font-bold py-2.5 rounded-xl text-xs flex justify-center items-center gap-2 cursor-pointer">
-                  {auditLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Run Pipeline'}
+                  {auditLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Run Agent Engine'}
                 </button>
               </div>
             </div>
@@ -450,7 +454,7 @@ export default function AuditFormApp() {
           {auditStep === 3 && auditResult && (
             <div className="space-y-4">
               <div className="flex justify-between items-center border-b border-slate-700/60 pb-3">
-                <h2 className="text-lg font-bold text-white">Session Findings</h2>
+                <h2 className="text-lg font-bold text-white">Agent Findings & Audit Log</h2>
                 <span className="text-[10px] font-mono bg-amber-500/10 text-amber-400 px-2 py-1 rounded border border-amber-500/20">
                   {auditResult.session_id}
                 </span>

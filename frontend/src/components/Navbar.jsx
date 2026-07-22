@@ -15,17 +15,16 @@ export default function Navbar({ onOpenRules }) {
               <ShieldCheck className="h-5 w-5 stroke-[2.5] text-slate-950" />
             </div>
             <span className="text-xl font-bold tracking-tight text-slate-50">
-              Lunaw<span className="text-amber-500">.ai</span>
+              Vigilant<span className="text-amber-500">Agent</span>
             </span>
           </a>
           <span className="hidden sm:inline-block rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-0.5 text-[11px] font-semibold text-amber-400">
-            Compliance Engine
+            Agentic Compliance Engine
           </span>
         </div>
 
         {/* Desktop Navigation Links */}
         <nav className="hidden items-center gap-8 text-sm font-medium text-slate-300 md:flex">
-          {/* CLICKABLE COMPLIANCE RULES */}
           <button 
             onClick={onOpenRules} 
             className="transition-colors hover:text-amber-400 font-medium text-slate-300 cursor-pointer"
@@ -54,7 +53,7 @@ export default function Navbar({ onOpenRules }) {
           </a>
         </div>
 
-        {/* Mobile menu trigger */}
+        {/* Mobile Menu Trigger */}
         <button 
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)} 
           className="text-slate-400 hover:text-white md:hidden"
