@@ -1,231 +1,256 @@
 import React, { useState } from 'react';
 import { 
   BookOpen, 
-  Terminal, 
-  Cpu, 
   ShieldCheck, 
-  Key, 
-  Layers, 
+  Cpu, 
+  Zap, 
+  Activity, 
+  Terminal, 
   CheckCircle2, 
-  ExternalLink,
-  Bot,
-  Video,
-  FileCode
+  Copy, 
+  Check, 
+  Server, 
+  Code2, 
+  Workflow, 
+  Layers, 
+  BarChart3, 
+  Database,
+  Lock,
+  Youtube
 } from 'lucide-react';
 
-export default function DocumentationPage({ onBackToApp }) {
+export default function Documentation() {
   const [activeTab, setActiveTab] = useState('overview');
+  const [copiedIndex, setCopiedIndex] = useState(null);
+
+  const handleCopy = (code, index) => {
+    navigator.clipboard.writeText(code);
+    setCopiedIndex(index);
+    setTimeout(() => setCopiedIndex(null), 2000);
+  };
 
   return (
-    <div className="w-full max-w-7xl mx-auto my-6 p-4">
-      <div className="bg-[#1E293B] border border-slate-700/60 rounded-3xl overflow-hidden shadow-2xl min-h-[700px] flex flex-col md:flex-row">
-        
-        {/* Left Navigation Sidebar */}
-        <aside className="w-full md:w-64 bg-[#0F172A] border-b md:border-b-0 md:border-r border-slate-700/60 p-6 flex flex-col justify-between flex-shrink-0">
-          <div className="space-y-6">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-tr from-amber-500 to-orange-500 text-slate-950 font-bold">
-                <BookOpen className="w-4 h-4 stroke-[2.5]" />
+    <div className="w-full max-w-7xl mx-auto p-4 md:p-8 space-y-8 text-slate-200">
+      
+      {/* Header Banner */}
+      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-amber-950/40 border border-slate-700/60 rounded-3xl p-6 md:p-10 shadow-2xl relative overflow-hidden">
+        <div className="relative z-10 space-y-3 max-w-3xl">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-xs font-bold text-amber-400">
+            <BookOpen className="w-3.5 h-3.5" /> Vigilant Agent v2.0 Developer Docs
+          </div>
+          <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">
+            Autonomous Multi-Modal Compliance Documentation
+          </h1>
+          <p className="text-sm text-slate-300 leading-relaxed">
+            Technical architecture, installation guide, execution metrics, and API specifications for the Vigilant Agent compliance orchestration engine.
+          </p>
+        </div>
+      </div>
+
+      {/* Navigation Tabs */}
+      <div className="flex border-b border-slate-700/60 overflow-x-auto gap-2 pb-1">
+        {[
+          { id: 'overview', label: 'Architecture Overview', icon: Workflow },
+          { id: 'installation', label: 'Installation & Setup', icon: Terminal },
+          { id: 'evaluations', label: 'Metrics & Evaluation', icon: BarChart3 },
+          { id: 'api', label: 'API Reference', icon: Server }
+        ].map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs whitespace-nowrap transition cursor-pointer ${
+                isActive 
+                  ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30' 
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+              }`}
+            >
+              <Icon className="w-4 h-4" /> {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* TAB 1: ARCHITECTURE OVERVIEW */}
+      {activeTab === 'overview' && (
+        <div className="space-y-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            
+            <div className="bg-[#1E293B] border border-slate-700/60 rounded-2xl p-6 space-y-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                <Youtube className="w-5 h-5 text-rose-500" />
               </div>
-              <span className="font-bold text-base text-white tracking-tight">Docs & Guides</span>
+              <h3 className="font-bold text-white text-base">1. Multi-Modal Indexing</h3>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Extracts spoken audio transcripts and on-screen visual text (OCR) from target media using Azure Video Indexer with fast indexing presets (`Basic`, `NoStreaming`).
+              </p>
             </div>
 
-            {/* Doc Navigation Tabs */}
-            <nav className="space-y-1.5 text-xs font-medium">
-              <button
-                onClick={() => setActiveTab('overview')}
-                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition-all cursor-pointer ${
-                  activeTab === 'overview' 
-                    ? 'bg-amber-500/10 text-amber-400 font-bold border border-amber-500/20' 
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-                }`}
-              >
-                <Cpu className="w-4 h-4" /> System Overview
-              </button>
+            <div className="bg-[#1E293B] border border-slate-700/60 rounded-2xl p-6 space-y-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                <Workflow className="w-5 h-5" />
+              </div>
+              <h3 className="font-bold text-white text-base">2. LangGraph Workflow</h3>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Stateful agent pipeline managing context retrieval, vector search against regulatory policy guidelines, and structured compliance checks.
+              </p>
+            </div>
 
-              <button
-                onClick={() => setActiveTab('agentic')}
-                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition-all cursor-pointer ${
-                  activeTab === 'agentic' 
-                    ? 'bg-amber-500/10 text-amber-400 font-bold border border-amber-500/20' 
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-                }`}
-              >
-                <Bot className="w-4 h-4" /> Agentic AI Architecture
-              </button>
+            <div className="bg-[#1E293B] border border-slate-700/60 rounded-2xl p-6 space-y-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                <Zap className="w-5 h-5 text-amber-400" />
+              </div>
+              <h3 className="font-bold text-white text-base">3. Groq Resilient Reasoning</h3>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Groq Llama-3 inference with Tenacity exponential backoff retries (`@retry`) to guard against API rate limits and generate structured JSON breach reports.
+              </p>
+            </div>
 
-              <button
-                onClick={() => setActiveTab('multimodal')}
-                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition-all cursor-pointer ${
-                  activeTab === 'multimodal' 
-                    ? 'bg-amber-500/10 text-amber-400 font-bold border border-amber-500/20' 
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-                }`}
-              >
-                <Video className="w-4 h-4" /> Multimodal Pipeline
-              </button>
-
-              <button
-                onClick={() => setActiveTab('api')}
-                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition-all cursor-pointer ${
-                  activeTab === 'api' 
-                    ? 'bg-amber-500/10 text-amber-400 font-bold border border-amber-500/20' 
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-                }`}
-              >
-                <Terminal className="w-4 h-4" /> API Reference
-              </button>
-            </nav>
           </div>
 
-          <button
-            onClick={onBackToApp}
-            className="mt-8 w-full bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold py-2.5 rounded-xl text-xs transition cursor-pointer"
-          >
-            ← Back to Console
-          </button>
-        </aside>
+          <div className="bg-[#1E293B] border border-slate-700/60 rounded-2xl p-6 space-y-4">
+            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <Layers className="w-5 h-5 text-amber-400" /> End-to-End System Pipeline
+            </h3>
+            <div className="bg-[#0F172A] border border-slate-800 rounded-xl p-4 font-mono text-xs text-slate-300 leading-relaxed overflow-x-auto">
+              [ Frontend: AuditFormApp.jsx ]<br/>
+              &nbsp;&nbsp;│<br/>
+              &nbsp;&nbsp;▼ (POST /audit with YouTube URL)<br/>
+              [ FastAPI Backend: server.py ]<br/>
+              &nbsp;&nbsp;│<br/>
+              &nbsp;&nbsp;├── 1. YouTube Title Fetch (oEmbed API)<br/>
+              &nbsp;&nbsp;├── 2. Video Indexer Service (indexingPreset="Basic")<br/>
+              &nbsp;&nbsp;├── 3. LangGraph Stateful Execution (app.invoke)<br/>
+              &nbsp;&nbsp;├── 4. Groq LLM Reasoning + Tenacity Exponential Retries<br/>
+              &nbsp;&nbsp;└── 5. Metric Computation (Compliance Score, Latency, Violations)<br/>
+              &nbsp;&nbsp;│<br/>
+              &nbsp;&nbsp;▼ (JSON Response + SQLite Audit Log Persistence)<br/>
+              [ Executive Dashboard View ]
+            </div>
+          </div>
+        </div>
+      )}
 
-        {/* Right Content Area */}
-        <main className="flex-1 p-8 md:p-10 overflow-y-auto max-h-[800px]">
-          
-          {/* TAB 1: SYSTEM OVERVIEW */}
-          {activeTab === 'overview' && (
-            <div className="space-y-6">
-              <div>
-                <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">Architecture Documentation</span>
-                <h1 className="text-3xl font-extrabold text-white mt-1">Vigilant Agent Overview</h1>
-                <p className="text-sm text-slate-400 mt-2 leading-relaxed">
-                  Vigilant Agent is an enterprise compliance orchestration engine built to automate brand, legal, and security verification across digital media assets using Agentic AI reasoning loops.
+      {/* TAB 2: INSTALLATION & SETUP */}
+      {activeTab === 'installation' && (
+        <div className="space-y-6">
+          <div className="bg-[#1E293B] border border-slate-700/60 rounded-2xl p-6 space-y-4">
+            <h3 className="text-base font-bold text-white">1. Environment Setup</h3>
+            <p className="text-xs text-slate-400">Activate your Python virtual environment and install backend requirements:</p>
+            
+            <div className="relative bg-[#0F172A] border border-slate-800 rounded-xl p-4 font-mono text-xs text-amber-400">
+              <button 
+                onClick={() => handleCopy("python -m pip install -r requirements.txt\npip install tenacity", 1)}
+                className="absolute right-3 top-3 text-slate-400 hover:text-white"
+              >
+                {copiedIndex === 1 ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+              </button>
+              <code>
+                # Activate virtual environment (Windows PowerShell)<br/>
+                .\.venv\Scripts\Activate.ps1<br/><br/>
+                # Install backend dependencies & tenacity retry library<br/>
+                python -m pip install -r requirements.txt<br/>
+                python -m pip install tenacity
+              </code>
+            </div>
+          </div>
+
+          <div className="bg-[#1E293B] border border-slate-700/60 rounded-2xl p-6 space-y-4">
+            <h3 className="text-base font-bold text-white">2. Database Schema Migration</h3>
+            <p className="text-xs text-slate-400">Ensure your SQLite database includes evaluation metric columns and media titles:</p>
+            
+            <div className="relative bg-[#0F172A] border border-slate-800 rounded-xl p-4 font-mono text-xs text-amber-400">
+              <button 
+                onClick={() => handleCopy("python -c \"import sqlite3; conn = sqlite3.connect('audit_sessions.db'); cursor = conn.cursor(); cursor.execute('ALTER TABLE audit_sessions ADD COLUMN compliance_score INTEGER DEFAULT 100;'); cursor.execute('ALTER TABLE audit_sessions ADD COLUMN latency_sec REAL DEFAULT 0.0;'); cursor.execute('ALTER TABLE audit_sessions ADD COLUMN violations_count INTEGER DEFAULT 0;'); cursor.execute('ALTER TABLE audit_sessions ADD COLUMN video_title TEXT DEFAULT ''YouTube Asset'';'); conn.commit(); conn.close(); print('Migration complete!')\"", 2)}
+                className="absolute right-3 top-3 text-slate-400 hover:text-white"
+              >
+                {copiedIndex === 2 ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+              </button>
+              <code>
+                python -c "import sqlite3; conn = sqlite3.connect('audit_sessions.db'); cursor = conn.cursor(); cursor.execute('ALTER TABLE audit_sessions ADD COLUMN compliance_score INTEGER DEFAULT 100;'); cursor.execute('ALTER TABLE audit_sessions ADD COLUMN latency_sec REAL DEFAULT 0.0;'); cursor.execute('ALTER TABLE audit_sessions ADD COLUMN violations_count INTEGER DEFAULT 0;'); cursor.execute('ALTER TABLE audit_sessions ADD COLUMN video_title TEXT DEFAULT ''YouTube Asset'';'); conn.commit(); conn.close(); print('Migration complete!')"
+              </code>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: METRICS & EVALUATION */}
+      {activeTab === 'evaluations' && (
+        <div className="space-y-6">
+          <div className="bg-[#1E293B] border border-slate-700/60 rounded-2xl p-6 space-y-4">
+            <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-amber-400" /> Evaluation Metric Definitions
+            </h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-[#0F172A] border border-slate-800 rounded-xl p-4 space-y-2">
+                <span className="text-amber-400 font-mono text-xs font-bold block">Compliance Score</span>
+                <p className="text-xs text-slate-400">
+                  A normalized $0-100$ rating calculated by deducting weighted penalties for policy violations (-15 per breach, -10 additional for critical severity).
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                <div className="p-4 rounded-2xl bg-[#0F172A] border border-slate-700/60 space-y-2">
-                  <div className="w-8 h-8 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-400 font-bold">
-                    <ShieldCheck className="w-4 h-4" />
-                  </div>
-                  <h3 className="font-bold text-white text-sm">Automated Compliance</h3>
-                  <p className="text-xs text-slate-400">Replaces manual video reviews with instant policy reasoning and structured audit findings.</p>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-[#0F172A] border border-slate-700/60 space-y-2">
-                  <div className="w-8 h-8 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-400 font-bold">
-                    <Layers className="w-4 h-4" />
-                  </div>
-                  <h3 className="font-bold text-white text-sm">Azure & Groq Infrastructure</h3>
-                  <p className="text-xs text-slate-400">Leverages ultra-fast Groq LLM inference combined with Azure multi-modal storage and processing.</p>
-                </div>
+              <div className="bg-[#0F172A] border border-slate-800 rounded-xl p-4 space-y-2">
+                <span className="text-emerald-400 font-mono text-xs font-bold block">Audit Latency</span>
+                <p className="text-xs text-slate-400">
+                  Total execution duration measured from request arrival to report output. Optimized using fast video indexing presets (`Basic`).
+                </p>
               </div>
 
-              <div className="pt-4 border-t border-slate-700/60 space-y-3">
-                <h3 className="text-sm font-bold text-white">Core Technology Stack</h3>
-                <div className="flex flex-wrap gap-2 text-xs">
-                  <span className="px-3 py-1 rounded-lg bg-slate-800 border border-slate-700 text-slate-300">FastAPI</span>
-                  <span className="px-3 py-1 rounded-lg bg-slate-800 border border-slate-700 text-slate-300">Groq Llama-3</span>
-                  <span className="px-3 py-1 rounded-lg bg-slate-800 border border-slate-700 text-slate-300">Whisper Audio Transcription</span>
-                  <span className="px-3 py-1 rounded-lg bg-slate-800 border border-slate-700 text-slate-300">Azure AI Services</span>
-                  <span className="px-3 py-1 rounded-lg bg-slate-800 border border-slate-700 text-slate-300">React + Tailwind CSS</span>
-                </div>
+              <div className="bg-[#0F172A] border border-slate-800 rounded-xl p-4 space-y-2">
+                <span className="text-rose-400 font-mono text-xs font-bold block">Breach Count</span>
+                <p className="text-xs text-slate-400">
+                  Total count of verified regulatory policy non-compliance events flagged across audio dialogue and on-screen visual text.
+                </p>
               </div>
             </div>
-          )}
+          </div>
+        </div>
+      )}
 
-          {/* TAB 2: AGENTIC AI ARCHITECTURE */}
-          {activeTab === 'agentic' && (
-            <div className="space-y-6">
-              <div>
-                <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">Autonomous Reasoning</span>
-                <h1 className="text-3xl font-extrabold text-white mt-1">Agentic AI Decision Loops</h1>
-                <p className="text-sm text-slate-400 mt-2 leading-relaxed">
-                  Unlike traditional static keyword analyzers, Vigilant Agent employs an autonomous agentic loop to inspect, cross-reference, and evaluate policy compliance.
-                </p>
-              </div>
-
-              <div className="space-y-4">
-                <div className="p-4 rounded-2xl bg-[#0F172A] border border-slate-700/60 space-y-2">
-                  <span className="text-[10px] font-mono text-amber-400 font-bold">STAGE 01 — MULTIMODAL INGESTION</span>
-                  <h4 className="text-sm font-bold text-white">Parallel Data Extraction</h4>
-                  <p className="text-xs text-slate-400">Extracts audio transcripts via Whisper, video OCR frames via vision models, and metadata into a unified temporal timeline.</p>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-[#0F172A] border border-slate-700/60 space-y-2">
-                  <span className="text-[10px] font-mono text-amber-400 font-bold">STAGE 02 — POLICY EVALUATION</span>
-                  <h4 className="text-sm font-bold text-white">Groq LLM Reasoning Engine</h4>
-                  <p className="text-xs text-slate-400">The agent systematically compares detected logos, claims, and disclaimers against the compliance rule database.</p>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-[#0F172A] border border-slate-700/60 space-y-2">
-                  <span className="text-[10px] font-mono text-amber-400 font-bold">STAGE 03 — REPORT GENERATION</span>
-                  <h4 className="text-sm font-bold text-white">Audit Logging & Evidence Export</h4>
-                  <p className="text-xs text-slate-400">Generates structured JSON & Markdown reports containing violation timestamps, severity ratings, and remediation recommendations.</p>
-                </div>
-              </div>
+      {/* TAB 4: API REFERENCE */}
+      {activeTab === 'api' && (
+        <div className="space-y-6">
+          <div className="bg-[#1E293B] border border-slate-700/60 rounded-2xl p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <span className="px-2.5 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-mono text-xs font-bold rounded-lg">
+                POST
+              </span>
+              <code className="text-white text-sm font-bold font-mono">/audit</code>
             </div>
-          )}
+            <p className="text-xs text-slate-400">Initiates multi-modal extraction and agentic compliance auditing for a video URL.</p>
 
-          {/* TAB 3: MULTIMODAL PIPELINE */}
-          {activeTab === 'multimodal' && (
-            <div className="space-y-6">
-              <div>
-                <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">Media Processing</span>
-                <h1 className="text-3xl font-extrabold text-white mt-1">Multimodal Vision & Audio</h1>
-                <p className="text-sm text-slate-400 mt-2 leading-relaxed">
-                  Detailed breakdown of how media assets pass through vision and acoustic extraction pipelines.
-                </p>
-              </div>
-
-              <div className="bg-[#0F172A] border border-slate-700/60 rounded-2xl p-5 space-y-3 font-mono text-xs text-slate-300">
-                <p className="text-amber-400 font-bold">// Video Audit Workflow Blueprint</p>
-                <p>1. [User Input] → YouTube Media URL</p>
-                <p>2. [Downloader Module] → Extract MP4 stream & Audio WAV</p>
-                <p>3. [Vision OCR Pipeline] → Keyframe Sampling (Every 1.0s) → Text Detection</p>
-                <p>4. [Acoustic Pipeline] → Speech-to-Text → Timestamped Transcripts</p>
-                <p>5. [Groq Agent Sync] → Policy Matrix Mapping → Findings Report</p>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 4: API REFERENCE */}
-          {activeTab === 'api' && (
-            <div className="space-y-6">
-              <div>
-                <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">Developer Docs</span>
-                <h1 className="text-3xl font-extrabold text-white mt-1">Backend API Endpoints</h1>
-                <p className="text-sm text-slate-400 mt-2 leading-relaxed">
-                  Connect your applications directly to the Vigilant Agent REST API.
-                </p>
-              </div>
-
-              <div className="space-y-4">
-                <div className="p-4 rounded-2xl bg-[#0F172A] border border-slate-700/60 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-mono text-[10px] font-bold">POST</span>
-                    <span className="font-mono text-xs font-bold text-white">/audit</span>
-                  </div>
-                  <p className="text-xs text-slate-400">Triggers an agentic multimodal compliance audit for a given video URL.</p>
-                  <pre className="bg-slate-950 p-3 rounded-xl text-[11px] font-mono text-slate-300 overflow-x-auto">
+            <div className="space-y-2">
+              <span className="text-xs font-bold text-slate-300 uppercase">Request Body (JSON)</span>
+              <pre className="bg-[#0F172A] border border-slate-800 rounded-xl p-4 font-mono text-xs text-slate-300">
 {`{
-  "email": "user@company.com",
-  "video_url": "https://www.youtube.com/watch?v=..."
+  "email": "dev@example.com",
+  "video_url": "https://www.youtube.com/watch?v=A4WZF74dAg4"
 }`}
-                  </pre>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-[#0F172A] border border-slate-700/60 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 font-mono text-[10px] font-bold">GET</span>
-                    <span className="font-mono text-xs font-bold text-white">/sessions?email={`{user_email}`}</span>
-                  </div>
-                  <p className="text-xs text-slate-400">Fetches all historical compliance audit reports for a logged-in account.</p>
-                </div>
-              </div>
+              </pre>
             </div>
-          )}
 
-        </main>
+            <div className="space-y-2">
+              <span className="text-xs font-bold text-slate-300 uppercase">Response Body (200 OK)</span>
+              <pre className="bg-[#0F172A] border border-slate-800 rounded-xl p-4 font-mono text-xs text-slate-300">
+{`{
+  "session_id": "c6e35b4e-...",
+  "video_id": "vid_c6e35b4e",
+  "video_title": "Sample Marketing Campaign Video",
+  "status": "COMPLETED",
+  "compliance_score": 85,
+  "latency_sec": 4.2,
+  "violations_count": 1,
+  "final_report": "FAIL: Breach of RULE-003 at 00:12s due to unsubstantiated financial guarantees."
+}`}
+              </pre>
+            </div>
+          </div>
+        </div>
+      )}
 
-      </div>
     </div>
   );
 }
