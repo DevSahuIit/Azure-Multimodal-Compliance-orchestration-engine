@@ -1,15 +1,16 @@
 import os
 import uuid
+import time
 import logging
 import sqlite3
 import secrets
+import requests  # <-- Ensure requests is imported
 from typing import List, Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
-from passlib.context import CryptContext
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from backend.src.api.telemetry import setup_telemetry
@@ -21,19 +22,16 @@ logger = logging.getLogger("api_server")
 
 setup_telemetry()
 
-# Password Hashing Setup
-import bcrypt
-
-def hash_password(password: str) -> str:
-    # Truncate to 72 bytes to respect bcrypt limits and hash
-    pwd_bytes = password.encode('utf-8')[:72]
-    salt = bcrypt.gensalt()
-    return bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    pwd_bytes = plain_password.encode('utf-8')[:72]
-    hashed_bytes = hashed_password.encode('utf-8')
-    return bcrypt.checkpw(pwd_bytes, hashed_bytes)
+# Helper to fetch YouTube Video Title fast via oEmbed
+def get_youtube_title(video_url: str) -> str:
+    try:
+        oembed_url = f"https://www.youtube.com/oembed?url={video_url}&format=json"
+        res = requests.get(oembed_url, timeout=3)
+        if res.status_code == 200:
+            return res.json().get("title", video_url)
+    except Exception:
+        pass
+    return video_url  # Fallback to URL if title fetch fails
 
 DB_FILE = "audit_sessions.db"
 
@@ -41,7 +39,6 @@ def init_db():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     
-    # Users Table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id TEXT PRIMARY KEY,
@@ -53,14 +50,17 @@ def init_db():
         )
     """)
     
-    # Audit Sessions Table mapped via user_email
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS audit_sessions (
             session_id TEXT PRIMARY KEY,
             user_email TEXT NOT NULL,
             video_url TEXT NOT NULL,
+            video_title TEXT DEFAULT 'YouTube Asset',
             status TEXT NOT NULL,
             final_report TEXT,
+            compliance_score INTEGER DEFAULT 100,
+            latency_sec REAL DEFAULT 0.0,
+            violations_count INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_email) REFERENCES users (email)
         )
@@ -70,8 +70,22 @@ def init_db():
 
 init_db()
 
-# --- Tenacity Resilient Workflow Invocation ---
-# --- Tenacity Resilient Workflow Invocation ---
+def compute_evaluation_metrics(compliance_results: list) -> dict:
+    total_checks = len(compliance_results)
+    if total_checks == 0:
+        return {"compliance_score": 100, "violations_count": 0}
+
+    violations = [c for c in compliance_results if str(c.get("status", "")).upper() in ["FAIL", "FAILED", "VIOLATION"]]
+    critical_breaches = [c for c in violations if str(c.get("severity", "")).capitalize() == "Critical"]
+    
+    score = 100 - (len(violations) * 15) - (len(critical_breaches) * 10)
+    score = max(0, min(100, score))
+
+    return {
+        "compliance_score": score,
+        "violations_count": len(violations)
+    }
+
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10),
@@ -79,13 +93,9 @@ init_db()
     reraise=True
 )
 def invoke_compliance_graph_with_retry(initial_inputs: dict) -> dict:
-    """
-    Executes the LangGraph compliance orchestration engine with automatic exponential
-    backoff retries (3 attempts: 2s, 4s, 8s...) to guard against Groq API rate limits (429)
-    or transient cloud network hiccups.
-    """
     logger.info(f"Executing compliance graph for video_id: {initial_inputs.get('video_id')}")
     return compliance_graph.invoke(initial_inputs)
+
 app = FastAPI(title="Brand Guardian AI API", version="2.0.0")
 
 app.add_middleware(
@@ -96,113 +106,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Schemas ---
-class SignUpRequest(BaseModel):
-    full_name: str
-    email: EmailStr
-    password: str
-
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
-
-class ForgotPasswordRequest(BaseModel):
-    email: EmailStr
-
-class ResetPasswordRequest(BaseModel):
-    email: EmailStr
-    token: str
-    new_password: str
-
 class AuditRequest(BaseModel):
     email: EmailStr
     video_url: str
-
-# --- Authentication Endpoints ---
-
-@app.post("/auth/signup")
-async def signup(req: SignUpRequest):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    
-    cursor.execute("SELECT id FROM users WHERE email = ?", (req.email.lower(),))
-    if cursor.fetchone():
-        conn.close()
-        raise HTTPException(status_code=400, detail="Account with this email already exists.")
-    
-    user_id = str(uuid.uuid4())
-    hashed_pwd = hash_password(req.password)
-    
-    cursor.execute(
-        "INSERT INTO users (id, full_name, email, hashed_password) VALUES (?, ?, ?, ?)",
-        (user_id, req.full_name, req.email.lower(), hashed_pwd)
-    )
-    conn.commit()
-    conn.close()
-    
-    return {"message": "Account created successfully!", "email": req.email.lower(), "full_name": req.full_name}
-
-@app.post("/auth/login")
-async def login(req: LoginRequest):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    
-    cursor.execute("SELECT id, full_name, hashed_password FROM users WHERE email = ?", (req.email.lower(),))
-    user = cursor.fetchone()
-    conn.close()
-    
-    if not user or not verify_password(req.password, user[2]):
-        raise HTTPException(status_code=401, detail="Invalid email or password.")
-    
-    return {
-        "message": "Login successful",
-        "user": {
-            "id": user[0],
-            "full_name": user[1],
-            "email": req.email.lower()
-        }
-    }
-
-@app.post("/auth/forgot-password")
-async def forgot_password(req: ForgotPasswordRequest):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    
-    cursor.execute("SELECT id FROM users WHERE email = ?", (req.email.lower(),))
-    user = cursor.fetchone()
-    
-    if not user:
-        conn.close()
-        return {"message": "If an account exists, a reset code was generated."}
-    
-    reset_token = secrets.token_hex(3) # 6-character code
-    cursor.execute("UPDATE users SET reset_token = ? WHERE email = ?", (reset_token, req.email.lower()))
-    conn.commit()
-    conn.close()
-    
-    logger.info(f"[PASSWORD RESET TOKEN GENERATED] Email: {req.email.lower()} -> Code: {reset_token}")
-    return {"message": "Reset code generated successfully.", "demo_reset_code": reset_token}
-
-@app.post("/auth/reset-password")
-async def reset_password(req: ResetPasswordRequest):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    
-    cursor.execute("SELECT id, reset_token FROM users WHERE email = ?", (req.email.lower(),))
-    user = cursor.fetchone()
-    
-    if not user or user[1] != req.token:
-        conn.close()
-        raise HTTPException(status_code=400, detail="Invalid reset token or email.")
-    
-    new_hashed_pwd = hash_password(req.new_password)
-    cursor.execute("UPDATE users SET hashed_password = ?, reset_token = NULL WHERE email = ?", (new_hashed_pwd, req.email.lower()))
-    conn.commit()
-    conn.close()
-    
-    return {"message": "Password updated successfully! Please login."}
-
-# --- User History & Audit Endpoints ---
 
 @app.get("/sessions")
 async def get_user_sessions(email: str):
@@ -210,7 +116,7 @@ async def get_user_sessions(email: str):
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT session_id, video_url, status, final_report, created_at FROM audit_sessions WHERE user_email = ? ORDER BY created_at DESC",
+        "SELECT session_id, video_url, video_title, status, final_report, compliance_score, latency_sec, violations_count, created_at FROM audit_sessions WHERE user_email = ? ORDER BY created_at DESC",
         (email.lower(),)
     )
     rows = cursor.fetchall()
@@ -221,6 +127,7 @@ async def get_user_sessions(email: str):
 async def audit_video(request: AuditRequest):
     session_id = str(uuid.uuid4())
     video_id_short = f"vid_{session_id[:8]}"
+    video_title = get_youtube_title(request.video_url)
 
     initial_inputs = {
         "video_url": request.video_url,
@@ -229,17 +136,24 @@ async def audit_video(request: AuditRequest):
         "errors": []
     }
 
+    start_time = time.time()
     try:
-        # Executes graph with Tenacity exponential retries (up to 3 times)
         final_state = invoke_compliance_graph_with_retry(initial_inputs)
+        execution_latency = round(time.time() - start_time, 2)
+        
         status = final_state.get("final_status", "COMPLETED")
         final_report = final_state.get("final_report", "No report generated.")
+        compliance_results = final_state.get("compliance_results", [])
+
+        metrics = compute_evaluation_metrics(compliance_results)
 
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO audit_sessions (session_id, user_email, video_url, status, final_report) VALUES (?, ?, ?, ?, ?)",
-            (session_id, request.email.lower(), request.video_url, status, final_report)
+            """INSERT INTO audit_sessions 
+               (session_id, user_email, video_url, video_title, status, final_report, compliance_score, latency_sec, violations_count) 
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (session_id, request.email.lower(), request.video_url, video_title, status, final_report, metrics["compliance_score"], execution_latency, metrics["violations_count"])
         )
         conn.commit()
         conn.close()
@@ -248,10 +162,14 @@ async def audit_video(request: AuditRequest):
             "session_id": session_id,
             "user_email": request.email.lower(),
             "video_id": video_id_short,
+            "video_title": video_title,
             "status": status,
             "final_report": final_report,
-            "compliance_results": final_state.get("compliance_results", [])
+            "compliance_score": metrics["compliance_score"],
+            "latency_sec": execution_latency,
+            "violations_count": metrics["violations_count"],
+            "compliance_results": compliance_results
         }
     except Exception as e:
-        logger.error(f"Audit failed after retry attempts: {str(e)}")
+        logger.error(f"Audit failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

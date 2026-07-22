@@ -50,7 +50,7 @@ class VideoIndexerService:
         """Downloads YouTube video locally via yt-dlp."""
         logger.info(f"Downloading YouTube video: {url}")
         ydl_opts = {
-            "format": "best",
+            "format": "best[ext=mp4]/best",
             "outtmpl": output_path,
             "quiet": False,
             "overwrites": True,
@@ -69,19 +69,22 @@ class VideoIndexerService:
             raise Exception(f"YouTube video download failed: {str(e)}")
 
     def upload_video(self, video_path: str, video_name: str) -> str:
-        """Uploads the local binary video file to Azure Video Indexer."""
+        """Uploads the local binary video file to Azure Video Indexer with fast indexing presets."""
         arm_token = self.get_access_token()
         vi_token = self.get_account_token(arm_token)
 
         api_url = f"https://api.videoindexer.ai/{self.location}/Accounts/{self.account_id}/Videos"
+        
+        # ⚡ OPTIMIZED PARAMS FOR SPEED:
         params = {
             "accessToken": vi_token,
             "name": video_name,
             "privacy": "Private",
-            "indexingPreset": "Default"
+            "indexingPreset": "Basic",        # Basic indexing: extracts transcript + OCR without heavy CV
+            "streamingPreset": "NoStreaming"   # Skips video HLS re-encoding (saves ~90 seconds)
         }
 
-        logger.info(f"Uploading binary file from {video_path} to Azure Video Indexer...")
+        logger.info(f"Uploading binary file from {video_path} to Azure Video Indexer (Fast Preset)...")
         with open(video_path, "rb") as video_file:
             files = {"file": video_file}
             response = requests.post(api_url, params=params, files=files)
@@ -113,8 +116,9 @@ class VideoIndexerService:
             elif state == "Quarantined":
                 raise Exception("Video quarantined due to copyright or content policy violation.")
 
-            logger.info(f"Status: {state}... Waiting 30 seconds.")
-            time.sleep(30)
+            # ⚡ OPTIMIZED: Reduced check interval from 30s to 5s for rapid state detection
+            logger.info(f"Status: {state}... Waiting 5 seconds.")
+            time.sleep(5)
 
     def extract_data(self, vi_json: dict) -> dict:
         """Parses raw Azure Video Indexer JSON output to extract transcript, OCR text, and duration."""

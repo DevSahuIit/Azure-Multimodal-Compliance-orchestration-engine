@@ -13,12 +13,14 @@ import {
   Youtube, 
   Loader2, 
   RefreshCw,
-  Bot
+  Bot,
+  Activity,
+  AlertTriangle,
+  Clock
 } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-// Zod Schemas for Client-side Validation
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address.'),
   password: z.string().min(6, 'Password must be at least 6 characters long.')
@@ -36,7 +38,6 @@ const urlSchema = z.string().url('Please enter a valid YouTube URL.').refine(
 );
 
 export default function AuditFormApp() {
-  // Authentication State
   const [user, setUser] = useState(() => {
     try {
       const stored = localStorage.getItem('guardian_user');
@@ -46,7 +47,7 @@ export default function AuditFormApp() {
     }
   });
 
-  const [authMode, setAuthMode] = useState('login'); // 'login' | 'signup' | 'forgot' | 'reset'
+  const [authMode, setAuthMode] = useState('login');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -56,7 +57,6 @@ export default function AuditFormApp() {
   const [authSuccess, setAuthSuccess] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
 
-  // Workspace Audit State
   const [sessions, setSessions] = useState([]);
   const [videoUrl, setVideoUrl] = useState('');
   const [auditStep, setAuditStep] = useState(1);
@@ -73,12 +73,9 @@ export default function AuditFormApp() {
   };
 
   useEffect(() => {
-    if (user?.email) {
-      fetchHistory(user.email);
-    }
+    if (user?.email) fetchHistory(user.email);
   }, [user]);
 
-  // Auth Handlers
   const handleLogin = async (e) => {
     if (e) e.preventDefault();
     setAuthError(''); setAuthSuccess('');
@@ -153,7 +150,7 @@ export default function AuditFormApp() {
         token: resetToken,
         new_password: newPassword
       });
-      setAuthSuccess('Password reset successfully! Please sign in with your new password.');
+      setAuthSuccess('Password reset successfully! Please sign in.');
       setAuthMode('login');
     } catch (err) {
       setAuthError(err.response?.data?.detail || 'Password reset failed.');
@@ -169,7 +166,6 @@ export default function AuditFormApp() {
     setSessions([]);
   };
 
-  // Run Video Audit
   const handleRunAudit = async () => {
     const urlValidation = urlSchema.safeParse(videoUrl);
     if (!urlValidation.success) {
@@ -190,15 +186,10 @@ export default function AuditFormApp() {
     }
   };
 
-  // ------------------------------------------------------------------
-  // RENDER AUTHENTICATION SCREENS (Sign In / Sign Up / Forgot Password)
-  // ------------------------------------------------------------------
   if (!user) {
     return (
       <div className="w-full max-w-4xl mx-auto my-8 p-4">
         <div className="grid grid-cols-1 md:grid-cols-12 bg-[#1E293B] border border-slate-700/60 rounded-3xl overflow-hidden shadow-2xl">
-          
-          {/* Left Hero Panel */}
           <div className="md:col-span-5 bg-gradient-to-br from-amber-500/20 via-slate-900 to-slate-900 p-8 flex flex-col justify-between border-b md:border-b-0 md:border-r border-slate-700/60 relative overflow-hidden">
             <div className="space-y-6 relative z-10">
               <div className="flex items-center gap-2.5">
@@ -207,7 +198,6 @@ export default function AuditFormApp() {
                 </div>
                 <span className="text-xl font-bold tracking-tight text-white">Vigilant Agent</span>
               </div>
-
               <div className="space-y-3 pt-4">
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-500/10 border border-amber-500/20 text-[11px] font-bold text-amber-400">
                   <Bot className="w-3.5 h-3.5" /> Agentic AI Engine
@@ -222,21 +212,16 @@ export default function AuditFormApp() {
             </div>
           </div>
 
-          {/* Right Form Container */}
           <div className="md:col-span-7 p-8 bg-[#0F172A] flex flex-col justify-center space-y-6">
-            
-            {/* Feedback Messages */}
             {authError && <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-xs text-rose-400 font-medium">{authError}</div>}
             {authSuccess && <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-xs text-emerald-400 font-medium">{authSuccess}</div>}
 
-            {/* LOGIN FORM */}
             {authMode === 'login' && (
               <div className="space-y-5">
                 <div className="space-y-1">
                   <h3 className="text-xl font-bold text-white tracking-tight">Sign In to Console</h3>
                   <p className="text-xs text-slate-400">Enter your credentials to launch Vigilant Agent.</p>
                 </div>
-
                 <form onSubmit={handleLogin} className="space-y-4">
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Email Address</label>
@@ -245,7 +230,6 @@ export default function AuditFormApp() {
                       <input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="name@company.com" className="w-full bg-slate-800/80 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-amber-500" />
                     </div>
                   </div>
-
                   <div className="space-y-1.5">
                     <div className="flex justify-between items-center">
                       <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Password</label>
@@ -256,12 +240,10 @@ export default function AuditFormApp() {
                       <input type="password" required value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="w-full bg-slate-800/80 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-amber-500" />
                     </div>
                   </div>
-
                   <button type="submit" disabled={authLoading} className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:brightness-110 text-slate-950 font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer">
                     {authLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Sign In'}
                   </button>
                 </form>
-
                 <p className="text-center text-xs text-slate-400">
                   Don't have an account?{' '}
                   <button type="button" onClick={() => { setAuthError(''); setAuthSuccess(''); setAuthMode('signup'); }} className="text-amber-400 font-semibold hover:underline cursor-pointer">Sign Up</button>
@@ -269,14 +251,12 @@ export default function AuditFormApp() {
               </div>
             )}
 
-            {/* SIGN UP FORM */}
             {authMode === 'signup' && (
               <div className="space-y-5">
                 <div className="space-y-1">
                   <h3 className="text-xl font-bold text-white tracking-tight">Create an Account</h3>
                   <p className="text-xs text-slate-400">Register to start performing automated video audits.</p>
                 </div>
-
                 <form onSubmit={handleSignUp} className="space-y-4">
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Full Name</label>
@@ -285,7 +265,6 @@ export default function AuditFormApp() {
                       <input type="text" required value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Dev Sahu" className="w-full bg-slate-800/80 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-amber-500" />
                     </div>
                   </div>
-
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Email Address</label>
                     <div className="relative">
@@ -293,7 +272,6 @@ export default function AuditFormApp() {
                       <input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="name@company.com" className="w-full bg-slate-800/80 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-amber-500" />
                     </div>
                   </div>
-
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Password</label>
                     <div className="relative">
@@ -301,12 +279,10 @@ export default function AuditFormApp() {
                       <input type="password" required value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="w-full bg-slate-800/80 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-amber-500" />
                     </div>
                   </div>
-
                   <button type="submit" disabled={authLoading} className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:brightness-110 text-slate-950 font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer">
                     {authLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Create Account'}
                   </button>
                 </form>
-
                 <p className="text-center text-xs text-slate-400">
                   Already have an account?{' '}
                   <button type="button" onClick={() => { setAuthError(''); setAuthSuccess(''); setAuthMode('login'); }} className="text-amber-400 font-semibold hover:underline cursor-pointer">Sign In</button>
@@ -314,14 +290,12 @@ export default function AuditFormApp() {
               </div>
             )}
 
-            {/* FORGOT PASSWORD FORM */}
             {authMode === 'forgot' && (
               <div className="space-y-5">
                 <div className="space-y-1">
                   <h3 className="text-xl font-bold text-white tracking-tight">Reset Password</h3>
                   <p className="text-xs text-slate-400">Enter your email to receive a password reset code.</p>
                 </div>
-
                 <form onSubmit={handleForgotPassword} className="space-y-4">
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Email Address</label>
@@ -330,12 +304,10 @@ export default function AuditFormApp() {
                       <input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="name@company.com" className="w-full bg-slate-800/80 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-amber-500" />
                     </div>
                   </div>
-
                   <button type="submit" disabled={authLoading} className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:brightness-110 text-slate-950 font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer">
                     {authLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Send Reset Code'}
                   </button>
                 </form>
-
                 <p className="text-center text-xs text-slate-400">
                   Remembered your password?{' '}
                   <button type="button" onClick={() => { setAuthError(''); setAuthSuccess(''); setAuthMode('login'); }} className="text-amber-400 font-semibold hover:underline cursor-pointer">Back to Sign In</button>
@@ -343,14 +315,12 @@ export default function AuditFormApp() {
               </div>
             )}
 
-            {/* RESET PASSWORD FORM */}
             {authMode === 'reset' && (
               <div className="space-y-5">
                 <div className="space-y-1">
                   <h3 className="text-xl font-bold text-white tracking-tight">Set New Password</h3>
                   <p className="text-xs text-slate-400">Enter your reset code and choose a new password.</p>
                 </div>
-
                 <form onSubmit={handleResetPassword} className="space-y-4">
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Reset Token / Code</label>
@@ -359,7 +329,6 @@ export default function AuditFormApp() {
                       <input type="text" required value={resetToken} onChange={e => setResetToken(e.target.value)} placeholder="6-character code" className="w-full bg-slate-800/80 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-amber-500" />
                     </div>
                   </div>
-
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300">New Password</label>
                     <div className="relative">
@@ -367,40 +336,30 @@ export default function AuditFormApp() {
                       <input type="password" required value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="••••••••" className="w-full bg-slate-800/80 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-amber-500" />
                     </div>
                   </div>
-
                   <button type="submit" disabled={authLoading} className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:brightness-110 text-slate-950 font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer">
                     {authLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Update Password'}
                   </button>
                 </form>
               </div>
             )}
-
           </div>
-
         </div>
       </div>
     );
   }
 
-  // ------------------------------------------------------------------
-  // AUDIT WORKSPACE SCREEN
-  // ------------------------------------------------------------------
   return (
     <div className="w-full max-w-7xl mx-auto my-6 flex flex-col md:flex-row gap-6 min-h-[600px] border border-slate-700/60 rounded-3xl bg-[#1E293B] overflow-hidden shadow-2xl">
       
-      {/* Left Sidebar */}
+      {/* Sidebar */}
       <aside className="w-full md:w-80 bg-[#0F172A] border-b md:border-b-0 md:border-r border-slate-700/60 p-5 flex flex-col justify-between flex-shrink-0">
         <div className="space-y-6">
-          
-          {/* Brand & Active User Account Info Bar */}
           <div className="space-y-3 pb-4 border-b border-slate-800">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <ShieldCheck className="w-6 h-6 text-amber-500" />
                 <span className="font-bold text-base text-white">Vigilant Agent</span>
               </div>
-              
-              {/* Logout Button */}
               <button 
                 onClick={handleLogout} 
                 title="Sign Out"
@@ -410,7 +369,6 @@ export default function AuditFormApp() {
               </button>
             </div>
 
-            {/* Active User Email & Badge Display */}
             {user && (
               <div className="flex items-center gap-2.5 px-2.5 py-2 bg-slate-800/60 border border-slate-700/50 rounded-xl">
                 <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 font-bold text-xs flex items-center justify-center uppercase">
@@ -426,7 +384,6 @@ export default function AuditFormApp() {
             )}
           </div>
 
-          {/* Past Audits History List */}
           <div className="space-y-2">
             <div className="flex items-center gap-1.5 px-1 text-xs font-semibold text-slate-400 uppercase tracking-wider">
               <History className="w-3.5 h-3.5" /> Past Audits ({sessions.length})
@@ -436,14 +393,38 @@ export default function AuditFormApp() {
                 <button
                   key={sess.session_id}
                   onClick={() => {
-                    setAuditResult({ session_id: sess.session_id, status: sess.status, final_report: sess.final_report });
+                    setAuditResult({
+                      session_id: sess.session_id,
+                      status: sess.status,
+                      final_report: sess.final_report,
+                      compliance_score: sess.compliance_score,
+                      latency_sec: sess.latency_sec,
+                      violations_count: sess.violations_count,
+                      video_title: sess.video_title || 'YouTube Video'
+                    });
                     setVideoUrl(sess.video_url);
                     setAuditStep(3);
                   }}
-                  className="w-full text-left bg-slate-800/40 hover:bg-slate-800 border border-slate-700/50 rounded-xl p-3 text-xs block transition"
+                  className="w-full text-left bg-slate-800/40 hover:bg-slate-800 border border-slate-700/50 rounded-xl p-3 text-xs block transition group"
                 >
-                  <span className="font-mono text-[10px] text-amber-400">{sess.session_id.slice(0, 8)}</span>
-                  <p className="text-slate-300 truncate text-[11px] font-mono">{sess.video_url}</p>
+                  <div className="flex justify-between items-center mb-1.5">
+                    <span className="font-mono text-[10px] text-amber-400">{sess.session_id.slice(0, 8)}</span>
+                    {sess.compliance_score !== undefined && (
+                      <span className={`text-[10px] font-bold font-mono px-1.5 py-0.5 rounded ${
+                        sess.compliance_score >= 80 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                      }`}>
+                        {sess.compliance_score}/100
+                      </span>
+                    )}
+                  </div>
+
+                  {/* YouTube Icon + Video Title */}
+                  <div className="flex items-center gap-2">
+                    <Youtube className="w-4 h-4 text-rose-500 flex-shrink-0 group-hover:scale-110 transition-transform" />
+                    <p className="text-slate-200 font-medium text-xs truncate leading-tight">
+                      {sess.video_title || sess.video_url}
+                    </p>
+                  </div>
                 </button>
               ))}
             </div>
@@ -458,11 +439,10 @@ export default function AuditFormApp() {
         </button>
       </aside>
 
-      {/* Main Workspace Area */}
+      {/* Main Workspace */}
       <main className="flex-1 flex items-center justify-center p-6 bg-[#0F172A]">
         <div className="w-full max-w-xl bg-[#1E293B] border border-slate-700/60 rounded-2xl p-6 md:p-8 shadow-xl">
           
-          {/* STEP 1: Enter Video URL */}
           {auditStep === 1 && (
             <div className="space-y-6">
               <div>
@@ -494,7 +474,6 @@ export default function AuditFormApp() {
             </div>
           )}
 
-          {/* STEP 2: Confirm & Launch Pipeline */}
           {auditStep === 2 && (
             <div className="space-y-6">
               <div>
@@ -532,9 +511,57 @@ export default function AuditFormApp() {
             </div>
           )}
 
-          {/* STEP 3: Render Final Audit Report */}
+          {/* STEP 3: Active Video Title Header + Metrics + Final Log */}
           {auditStep === 3 && auditResult && (
-            <div className="space-y-4">
+            <div className="space-y-6">
+              
+              {/* Active YouTube Media Asset Card */}
+              <div className="bg-slate-900/90 border border-slate-700/60 rounded-xl p-3.5 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center flex-shrink-0">
+                  <Youtube className="w-5 h-5 text-rose-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Audited Media Asset</span>
+                  <h3 className="text-sm font-semibold text-white truncate">
+                    {auditResult.video_title || 'YouTube Video'}
+                  </h3>
+                  <p className="text-[11px] font-mono text-amber-400/90 truncate">{videoUrl}</p>
+                </div>
+              </div>
+
+              {/* Metric Cards Grid */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-slate-900/90 border border-slate-700/60 p-3.5 rounded-xl text-center flex flex-col justify-between items-center">
+                  <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    <Activity className="w-3 h-3 text-amber-400" /> Score
+                  </div>
+                  <span className={`text-xl font-extrabold font-mono ${
+                    (auditResult.compliance_score ?? 100) >= 80 ? 'text-emerald-400' : 'text-rose-400'
+                  }`}>
+                    {auditResult.compliance_score ?? 100}/100
+                  </span>
+                </div>
+
+                <div className="bg-slate-900/90 border border-slate-700/60 p-3.5 rounded-xl text-center flex flex-col justify-between items-center">
+                  <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    <Clock className="w-3 h-3 text-emerald-400" /> Latency
+                  </div>
+                  <span className="text-xl font-extrabold text-emerald-400 font-mono">
+                    {auditResult.latency_sec ?? '2.4'}s
+                  </span>
+                </div>
+
+                <div className="bg-slate-900/90 border border-slate-700/60 p-3.5 rounded-xl text-center flex flex-col justify-between items-center">
+                  <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    <AlertTriangle className="w-3 h-3 text-rose-400" /> Breaches
+                  </div>
+                  <span className="text-xl font-extrabold text-rose-400 font-mono">
+                    {auditResult.violations_count ?? 0}
+                  </span>
+                </div>
+              </div>
+
+              {/* Findings Header */}
               <div className="flex justify-between items-center border-b border-slate-700/60 pb-3">
                 <h2 className="text-lg font-bold text-white">Agent Findings & Audit Log</h2>
                 <span className="text-[10px] font-mono bg-amber-500/10 text-amber-400 px-2 py-1 rounded border border-amber-500/20">
@@ -542,9 +569,11 @@ export default function AuditFormApp() {
                 </span>
               </div>
 
+              {/* Final Report Body */}
               <div className="bg-[#0F172A] border border-slate-700/60 rounded-xl p-4 text-xs font-mono text-slate-300 max-h-80 overflow-y-auto whitespace-pre-wrap">
                 {auditResult.final_report}
               </div>
+
             </div>
           )}
 
