@@ -1,81 +1,43 @@
-import uuid
-import json
+import os
+import sys
 import logging
-from pprint import pprint
 from dotenv import load_dotenv
 
 from backend.src.graph.workflow import app
 
-# --------------------------------------------------------------------------
-# Setup Logging
-# --------------------------------------------------------------------------
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger("brand_guardian_runner")
-
-# Load environment variables from .env
 load_dotenv(override=True)
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("brand_guardian_runner")
 
-def run_cli_simulation():
-    """
-    Simulates a video compliance audit request from the Command Line Interface (CLI).
-    Orchestrates session creation, workflow invocation, and report formatting.
-    """
-    session_id = str(uuid.uuid4())
-    logger.info(f"Starting audit session: {session_id}")
 
-    # Generate shortened video tracking ID
-    video_id_short = f"vid_{session_id[:8]}"
-
-    # Define initial graph state payload
+def run_cli_simulation(video_url: str):
+    """Executes the compliance graph dynamically for a given video URL."""
     initial_inputs = {
-        # Sample Neutrogena ad URL from the tutorial
-        "video_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",  
-        "video_id": video_id_short,
+        "video_url": video_url,
+        "video_id": f"vid_cli_{os.urandom(4).hex()}",
         "compliance_results": [],
         "errors": []
     }
 
-    logger.info("Initializing workflow execution...")
-    print("\n--- Input Payload ---")
-    print(json.dumps(initial_inputs, indent=2))
-
+    logger.info(f"Starting audit session for URL: {video_url}")
     try:
-        # Invoke the compiled LangGraph workflow
         final_state = app.invoke(initial_inputs)
         logger.info("Workflow execution complete.")
-
-        print("\n" + "=" * 50)
-        print("         COMPLIANCE AUDIT REPORT         ")
-        print("=" * 50)
-        print(f"Video ID     : {final_state.get('video_id')}")
-        print(f"Audit Status : {final_state.get('final_status', 'UNKNOWN').upper()}")
-        print("-" * 50)
-
-        # Print detected compliance violations
-        results = final_state.get("compliance_results", [])
-        if results:
-            print("\nViolations Detected:")
-            for idx, issue in enumerate(results, 1):
-                severity = issue.get("severity", "N/A").upper()
-                category = issue.get("category", "General")
-                description = issue.get("description", "No description provided.")
-                print(f" {idx}. [{severity}] [{category}]: {description}")
-        else:
-            print("\nNo violations detected. Video is compliant.")
-
-        # Print final report summary
-        print("\n--- Final Summary ---")
-        print(final_state.get("final_report", "No summary report generated."))
-        print("=" * 50 + "\n")
-
+        print("\n==================================================")
+        print("          COMPLIANCE AUDIT REPORT                 ")
+        print("==================================================")
+        print(f"Status: {final_state.get('final_status', 'UNKNOWN')}")
+        print("--------------------------------------------------")
+        print(final_state.get("final_report", "No report generated."))
+        return final_state
     except Exception as e:
         logger.error(f"Workflow execution failed: {str(e)}")
         raise e
 
 
 if __name__ == "__main__":
-    run_cli_simulation()
+    # If a URL argument is passed via terminal: python main.py <url>
+    # Otherwise, fall back to a default test URL for quick terminal testing
+    target_url = sys.argv[1] if len(sys.argv) > 1 else "https://www.youtube.com/watch?v=I3CWFDgqvq8"
+    run_cli_simulation(target_url)
