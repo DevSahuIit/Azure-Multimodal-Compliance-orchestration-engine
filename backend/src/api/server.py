@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 from passlib.context import CryptContext
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from backend.src.api.telemetry import setup_telemetry
 from backend.src.graph.workflow import app as compliance_graph
@@ -33,6 +34,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     pwd_bytes = plain_password.encode('utf-8')[:72]
     hashed_bytes = hashed_password.encode('utf-8')
     return bcrypt.checkpw(pwd_bytes, hashed_bytes)
+
 DB_FILE = "audit_sessions.db"
 
 def init_db():
@@ -68,6 +70,22 @@ def init_db():
 
 init_db()
 
+# --- Tenacity Resilient Workflow Invocation ---
+# --- Tenacity Resilient Workflow Invocation ---
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type(Exception),
+    reraise=True
+)
+def invoke_compliance_graph_with_retry(initial_inputs: dict) -> dict:
+    """
+    Executes the LangGraph compliance orchestration engine with automatic exponential
+    backoff retries (3 attempts: 2s, 4s, 8s...) to guard against Groq API rate limits (429)
+    or transient cloud network hiccups.
+    """
+    logger.info(f"Executing compliance graph for video_id: {initial_inputs.get('video_id')}")
+    return compliance_graph.invoke(initial_inputs)
 app = FastAPI(title="Brand Guardian AI API", version="2.0.0")
 
 app.add_middleware(
@@ -155,7 +173,6 @@ async def forgot_password(req: ForgotPasswordRequest):
     
     if not user:
         conn.close()
-        # Return success anyway to avoid account enumeration
         return {"message": "If an account exists, a reset code was generated."}
     
     reset_token = secrets.token_hex(3) # 6-character code
@@ -178,7 +195,6 @@ async def reset_password(req: ResetPasswordRequest):
         conn.close()
         raise HTTPException(status_code=400, detail="Invalid reset token or email.")
     
-    # Replace: new_hashed_pwd = pwd_context.hash(req.new_password)
     new_hashed_pwd = hash_password(req.new_password)
     cursor.execute("UPDATE users SET hashed_password = ?, reset_token = NULL WHERE email = ?", (new_hashed_pwd, req.email.lower()))
     conn.commit()
@@ -214,7 +230,8 @@ async def audit_video(request: AuditRequest):
     }
 
     try:
-        final_state = compliance_graph.invoke(initial_inputs)
+        # Executes graph with Tenacity exponential retries (up to 3 times)
+        final_state = invoke_compliance_graph_with_retry(initial_inputs)
         status = final_state.get("final_status", "COMPLETED")
         final_report = final_state.get("final_report", "No report generated.")
 
@@ -236,5 +253,5 @@ async def audit_video(request: AuditRequest):
             "compliance_results": final_state.get("compliance_results", [])
         }
     except Exception as e:
-        logger.error(f"Audit failed: {str(e)}")
+        logger.error(f"Audit failed after retry attempts: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
