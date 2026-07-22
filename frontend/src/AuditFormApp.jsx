@@ -19,7 +19,9 @@ import {
   Clock
 } from 'lucide-react';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// Sanitize base URL to ensure no trailing slash breaks routes
+const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_BASE_URL = rawApiUrl.replace(/\/+$/, '');
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address.'),
