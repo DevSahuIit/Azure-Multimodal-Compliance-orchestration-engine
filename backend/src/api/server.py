@@ -21,8 +21,18 @@ logger = logging.getLogger("api_server")
 setup_telemetry()
 
 # Password Hashing Setup
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+import bcrypt
 
+def hash_password(password: str) -> str:
+    # Truncate to 72 bytes to respect bcrypt limits and hash
+    pwd_bytes = password.encode('utf-8')[:72]
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    pwd_bytes = plain_password.encode('utf-8')[:72]
+    hashed_bytes = hashed_password.encode('utf-8')
+    return bcrypt.checkpw(pwd_bytes, hashed_bytes)
 DB_FILE = "audit_sessions.db"
 
 def init_db():
@@ -103,7 +113,7 @@ async def signup(req: SignUpRequest):
         raise HTTPException(status_code=400, detail="Account with this email already exists.")
     
     user_id = str(uuid.uuid4())
-    hashed_pwd = pwd_context.hash(req.password)
+    hashed_pwd = hash_password(req.password)
     
     cursor.execute(
         "INSERT INTO users (id, full_name, email, hashed_password) VALUES (?, ?, ?, ?)",
@@ -123,7 +133,7 @@ async def login(req: LoginRequest):
     user = cursor.fetchone()
     conn.close()
     
-    if not user or not pwd_context.verify(req.password, user[2]):
+    if not user or not verify_password(req.password, user[2]):
         raise HTTPException(status_code=401, detail="Invalid email or password.")
     
     return {
@@ -168,7 +178,8 @@ async def reset_password(req: ResetPasswordRequest):
         conn.close()
         raise HTTPException(status_code=400, detail="Invalid reset token or email.")
     
-    new_hashed_pwd = pwd_context.hash(req.new_password)
+    # Replace: new_hashed_pwd = pwd_context.hash(req.new_password)
+    new_hashed_pwd = hash_password(req.new_password)
     cursor.execute("UPDATE users SET hashed_password = ?, reset_token = NULL WHERE email = ?", (new_hashed_pwd, req.email.lower()))
     conn.commit()
     conn.close()
