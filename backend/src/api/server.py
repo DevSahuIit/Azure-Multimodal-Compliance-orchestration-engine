@@ -33,41 +33,51 @@ def get_youtube_title(video_url: str) -> str:
         pass
     return video_url  # Fallback to URL if title fetch fails
 
-DB_FILE = "audit_sessions.db"
+import os
+
+# Detect Vercel execution environment
+IS_VERCEL = os.getenv("VERCEL") == "1"
+
+# Route database file to /tmp on Vercel (only writable folder in serverless functions)
+DB_FILE = "/tmp/audit_sessions.db" if IS_VERCEL else "audit_sessions.db"
 
 def init_db():
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id TEXT PRIMARY KEY,
-            full_name TEXT NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            hashed_password TEXT NOT NULL,
-            reset_token TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS audit_sessions (
-            session_id TEXT PRIMARY KEY,
-            user_email TEXT NOT NULL,
-            video_url TEXT NOT NULL,
-            video_title TEXT DEFAULT 'YouTube Asset',
-            status TEXT NOT NULL,
-            final_report TEXT,
-            compliance_score INTEGER DEFAULT 100,
-            latency_sec REAL DEFAULT 0.0,
-            violations_count INTEGER DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_email) REFERENCES users (email)
-        )
-    """)
-    conn.commit()
-    conn.close()
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                full_name TEXT NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                hashed_password TEXT NOT NULL,
+                reset_token TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS audit_sessions (
+                session_id TEXT PRIMARY KEY,
+                user_email TEXT NOT NULL,
+                video_url TEXT NOT NULL,
+                video_title TEXT DEFAULT 'YouTube Asset',
+                status TEXT NOT NULL,
+                final_report TEXT,
+                compliance_score INTEGER DEFAULT 100,
+                latency_sec REAL DEFAULT 0.0,
+                violations_count INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_email) REFERENCES users (email)
+            )
+        """)
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Database initialization failed: {str(e)}")
 
+# Invoke initialization immediately on container startup
 init_db()
 
 def compute_evaluation_metrics(compliance_results: list) -> dict:
