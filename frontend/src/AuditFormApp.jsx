@@ -21,7 +21,8 @@ import {
 
 // Sanitize base URL to ensure no trailing slash breaks routes
 // Inside frontend/src/AuditFormApp.jsx
-const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+// Replace with your actual Render web service URL
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://brand-guardian-api-bloi.onrender.com';
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address.'),
