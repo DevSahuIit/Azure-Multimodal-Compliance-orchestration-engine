@@ -4,9 +4,10 @@ import time
 import logging
 import sqlite3
 import secrets
-import requests  # <-- Ensure requests is imported
+import requests
 from typing import List, Optional
 
+import bcrypt
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,8 +33,6 @@ def get_youtube_title(video_url: str) -> str:
     except Exception:
         pass
     return video_url  # Fallback to URL if title fetch fails
-
-import os
 
 # Detect Vercel execution environment
 IS_VERCEL = os.getenv("VERCEL") == "1"
@@ -112,7 +111,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
-        "https://azure-multimodal-compliance-orchest.vercel.app/",  # Add your live Vercel URL here
+        "https://azure-multimodal-compliance-orchest.vercel.app",
         "*"
     ],
     allow_credentials=True,
@@ -120,9 +119,86 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# -------------------------------------------------------------------
+# PYDANTIC SCHEMAS
+# -------------------------------------------------------------------
+
+class UserSignUp(BaseModel):
+    full_name: str
+    email: EmailStr
+    password: str
+
+class UserLogIn(BaseModel):
+    email: EmailStr
+    password: str
+
 class AuditRequest(BaseModel):
     email: EmailStr
     video_url: str
+
+# -------------------------------------------------------------------
+# AUTHENTICATION ENDPOINTS
+# -------------------------------------------------------------------
+
+@app.post("/auth/signup")
+async def signup(user: UserSignUp):
+    email_clean = user.email.lower().strip()
+    
+    # Hash password using bcrypt
+    hashed_pwd = bcrypt.hashpw(user.password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    user_id = str(uuid.uuid4())
+
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute(
+            "INSERT INTO users (id, full_name, email, hashed_password) VALUES (?, ?, ?, ?)",
+            (user_id, user.full_name, email_clean, hashed_pwd)
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.close()
+        raise HTTPException(status_code=400, detail="User with this email already exists.")
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
+    
+    conn.close()
+    return {"message": "User created successfully", "user": {"id": user_id, "email": email_clean, "full_name": user.full_name}}
+
+
+@app.post("/auth/login")
+async def login(credentials: UserLogIn):
+    email_clean = credentials.email.lower().strip()
+    
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT id, full_name, email, hashed_password FROM users WHERE email = ?", (email_clean,))
+    user = cursor.fetchone()
+    conn.close()
+
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid email or password.")
+
+    # Verify password against hash
+    if not bcrypt.checkpw(credentials.password.encode('utf-8'), user["hashed_password"].encode('utf-8')):
+        raise HTTPException(status_code=401, detail="Invalid email or password.")
+
+    return {
+        "message": "Login successful",
+        "user": {
+            "id": user["id"],
+            "email": user["email"],
+            "full_name": user["full_name"]
+        }
+    }
+
+# -------------------------------------------------------------------
+# CORE APP ENDPOINTS
+# -------------------------------------------------------------------
 
 @app.get("/sessions")
 async def get_user_sessions(email: str):
