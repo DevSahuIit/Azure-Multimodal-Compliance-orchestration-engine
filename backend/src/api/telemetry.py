@@ -13,7 +13,7 @@ def setup_telemetry():
     errors, and system performance metrics.
     """
     # Retrieve Application Insights Connection String from environment
-    connection_string = os.getenv("APPLICATION_INSIGHTS_CONNECTION_STRING")
+    connection_string = os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING")
 
     # Check if Connection String is available
     if not connection_string:
