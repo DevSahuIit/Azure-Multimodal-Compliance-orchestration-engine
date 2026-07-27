@@ -5,7 +5,7 @@ import re
 from typing import Dict, Any, List
 
 from langchain_groq import ChatGroq
-from langchain_ollama import OllamaEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import AzureSearch
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -17,7 +17,7 @@ logger = logging.getLogger("brand_guardian")
 logging.basicConfig(level=logging.INFO)
 
 # --------------------------------------------------------------------------
-# NODE 1: Index Video Node (Video Download -> Azure VI Upload -> Extract Text)
+# NODE 1: Index Video Node (Azure VI Direct Upload -> Extract Text)
 # --------------------------------------------------------------------------
 def index_video_node(state: VideoAuditState) -> Dict[str, Any]:
     video_url = state.get("video_url")
@@ -25,30 +25,15 @@ def index_video_node(state: VideoAuditState) -> Dict[str, Any]:
     
     logger.info(f"[Node: Indexer] Processing URL: {video_url}")
     
-    temp_local_file = "temp_audit_video.mp4"
-    
     try:
         vi_service = VideoIndexerService()
         
-        # Download YouTube video locally
-        if "youtube.com" in video_url or "youtu.be" in video_url:
-            local_path = vi_service.download_youtube_video(
-                url=video_url,
-                output_path=temp_local_file
-            )
-        else:
-            raise Exception("Please provide a valid YouTube URL.")
-
-        # Upload to Azure Video Indexer
+        # Pass URL directly to Azure Video Indexer
         azure_video_id = vi_service.upload_video(
-            video_path=local_path,
+            video_url=video_url,
             video_name=video_id_input
         )
         logger.info(f"[Node: Indexer] Upload success. Azure Video ID: {azure_video_id}")
-        
-        # Cleanup temporary local file
-        if os.path.exists(local_path):
-            os.remove(local_path)
             
         # Poll and wait for processing completion
         raw_insights = vi_service.wait_for_processing(azure_video_id)
@@ -69,7 +54,7 @@ def index_video_node(state: VideoAuditState) -> Dict[str, Any]:
         }
 
 # --------------------------------------------------------------------------
-# NODE 2: Compliance Auditor Node (RAG + Azure Search + Groq LLM + Ollama)
+# NODE 2: Compliance Auditor Node (RAG + Azure Search + Groq LLM)
 # --------------------------------------------------------------------------
 def audio_content_node(state: VideoAuditState) -> Dict[str, Any]:
     logger.info("[Node: Auditor] Querying knowledge base and LLM...")
@@ -91,12 +76,10 @@ def audio_content_node(state: VideoAuditState) -> Dict[str, Any]:
         temperature=0
     )
     
-    # 2. Initialize Lightweight Ollama Embeddings Model
-    embeddings = OllamaEmbeddings(
-        model=os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
-    )
+    # 2. Cloud-compatible CPU Embedding Model (Replaces Ollama)
+    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
-    # 3. Vector Store with Azure Search (Queries embedded via Ollama)
+    # 3. Vector Store with Azure Search
     vector_store = AzureSearch(
         azure_search_endpoint=os.getenv("AZURE_SEARCH_ENDPOINT"),
         azure_search_key=os.getenv("AZURE_SEARCH_API_KEY"),

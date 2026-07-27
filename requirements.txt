@@ -19,3 +19,5 @@ azure-monitor-opentelemetry>=1.4.0
 yt-dlp>=2024.3.10
 langchain-groq
 langchain-ollama
+langchain-huggingface
+sentence-transformers
