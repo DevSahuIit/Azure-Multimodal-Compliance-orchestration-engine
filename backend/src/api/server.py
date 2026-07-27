@@ -285,5 +285,14 @@ async def audit_video(request: AuditRequest):
             "compliance_results": compliance_results
         }
     except Exception as e:
-        logger.error(f"Audit failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        error_details = traceback.format_exc()
+        logger.error(f"[Node: Indexer] Video Indexer failed:\n{error_details}")
+        
+        return {
+            "errors": [str(e)],
+            "final_status": "fail",
+            "final_report": f"Audit skipped: {str(e)}",  # <-- Shows exact exception in UI
+            "transcript": "",
+            "ocr_text": []
+        }
