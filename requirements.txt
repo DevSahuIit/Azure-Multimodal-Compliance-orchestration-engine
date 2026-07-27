@@ -21,3 +21,4 @@ langchain-groq
 langchain-ollama
 langchain-huggingface
 sentence-transformers
+libsql-experimental

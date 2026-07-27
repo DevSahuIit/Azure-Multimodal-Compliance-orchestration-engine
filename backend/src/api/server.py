@@ -2,12 +2,12 @@ import os
 import uuid
 import time
 import logging
-import sqlite3
 import secrets
 import requests
 from typing import List, Optional
 
 import bcrypt
+import libsql_experimental as libsql  # <-- Cloud database client
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,15 +34,25 @@ def get_youtube_title(video_url: str) -> str:
         pass
     return video_url  # Fallback to URL if title fetch fails
 
-# Detect Vercel execution environment
-IS_VERCEL = os.getenv("VERCEL") == "1"
 
-# Route database file to /tmp on Vercel (only writable folder in serverless functions)
-DB_FILE = "/tmp/audit_sessions.db" if IS_VERCEL else "audit_sessions.db"
+# Helper to handle Turso Cloud DB connection with local SQLite fallback
+def get_db_connection():
+    turso_url = os.getenv("TURSO_DATABASE_URL")
+    turso_token = os.getenv("TURSO_AUTH_TOKEN")
+    
+    if turso_url and turso_token:
+        # Connect to Turso Cloud DB
+        return libsql.connect(database=turso_url, auth_token=turso_token)
+    else:
+        # Fallback to local SQLite file
+        is_vercel = os.getenv("VERCEL") == "1"
+        db_file = "/tmp/audit_sessions.db" if is_vercel else "audit_sessions.db"
+        return libsql.connect(db_file)
+
 
 def init_db():
     try:
-        conn = sqlite3.connect(DB_FILE)
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         cursor.execute("""
@@ -76,7 +86,7 @@ def init_db():
     except Exception as e:
         logger.error(f"Database initialization failed: {str(e)}")
 
-# Invoke initialization immediately on container startup
+# Invoke database setup on startup
 init_db()
 
 def compute_evaluation_metrics(compliance_results: list) -> dict:
@@ -144,11 +154,10 @@ class AuditRequest(BaseModel):
 async def signup(user: UserSignUp):
     email_clean = user.email.lower().strip()
     
-    # Hash password using bcrypt
     hashed_pwd = bcrypt.hashpw(user.password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
     user_id = str(uuid.uuid4())
 
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_db_connection()
     cursor = conn.cursor()
     
     try:
@@ -157,11 +166,10 @@ async def signup(user: UserSignUp):
             (user_id, user.full_name, email_clean, hashed_pwd)
         )
         conn.commit()
-    except sqlite3.IntegrityError:
-        conn.close()
-        raise HTTPException(status_code=400, detail="User with this email already exists.")
     except Exception as e:
         conn.close()
+        if "UNIQUE" in str(e).upper() or "INTEGRITY" in str(e).upper():
+            raise HTTPException(status_code=400, detail="User with this email already exists.")
         raise HTTPException(status_code=500, detail=str(e))
     
     conn.close()
@@ -172,27 +180,29 @@ async def signup(user: UserSignUp):
 async def login(credentials: UserLogIn):
     email_clean = credentials.email.lower().strip()
     
-    conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row
+    conn = get_db_connection()
     cursor = conn.cursor()
     
     cursor.execute("SELECT id, full_name, email, hashed_password FROM users WHERE email = ?", (email_clean,))
-    user = cursor.fetchone()
+    row = cursor.fetchone()
     conn.close()
 
-    if not user:
+    if not row:
         raise HTTPException(status_code=401, detail="Invalid email or password.")
 
+    # Parse response tuple safely
+    user_id, full_name, email, hashed_password = row[0], row[1], row[2], row[3]
+
     # Verify password against hash
-    if not bcrypt.checkpw(credentials.password.encode('utf-8'), user["hashed_password"].encode('utf-8')):
+    if not bcrypt.checkpw(credentials.password.encode('utf-8'), hashed_password.encode('utf-8')):
         raise HTTPException(status_code=401, detail="Invalid email or password.")
 
     return {
         "message": "Login successful",
         "user": {
-            "id": user["id"],
-            "email": user["email"],
-            "full_name": user["full_name"]
+            "id": user_id,
+            "email": email,
+            "full_name": full_name
         }
     }
 
@@ -202,8 +212,7 @@ async def login(credentials: UserLogIn):
 
 @app.get("/sessions")
 async def get_user_sessions(email: str):
-    conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
         "SELECT session_id, video_url, video_title, status, final_report, compliance_score, latency_sec, violations_count, created_at FROM audit_sessions WHERE user_email = ? ORDER BY created_at DESC",
@@ -211,7 +220,22 @@ async def get_user_sessions(email: str):
     )
     rows = cursor.fetchall()
     conn.close()
-    return [dict(row) for row in rows]
+    
+    # Map raw tuple database results to structured list of dicts
+    sessions = []
+    for row in rows:
+        sessions.append({
+            "session_id": row[0],
+            "video_url": row[1],
+            "video_title": row[2],
+            "status": row[3],
+            "final_report": row[4],
+            "compliance_score": row[5],
+            "latency_sec": row[6],
+            "violations_count": row[7],
+            "created_at": str(row[8])
+        })
+    return sessions
 
 @app.post("/audit")
 async def audit_video(request: AuditRequest):
@@ -237,7 +261,7 @@ async def audit_video(request: AuditRequest):
 
         metrics = compute_evaluation_metrics(compliance_results)
 
-        conn = sqlite3.connect(DB_FILE)
+        conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute(
             """INSERT INTO audit_sessions 
