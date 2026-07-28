@@ -24,9 +24,7 @@ class VideoIndexerService:
         if tenant_id and client_id and client_secret:
             # Explicit Client Secret authentication for cloud deployments (Render, Vercel)
             self.credential = ClientSecretCredential(
-                tenant_id=tenant_id,
-                client_id=client_id,
-                client_secret=client_secret
+                tenant_id=tenant_id, client_id=client_id, client_secret=client_secret
             )
         else:
             # Fallback to default credential chain (Azure CLI / Developer tools locally)
@@ -35,7 +33,9 @@ class VideoIndexerService:
     def get_access_token(self) -> str:
         """Generates Azure Resource Manager (ARM) Access Token."""
         try:
-            token_object = self.credential.get_token("https://management.azure.com/.default")
+            token_object = self.credential.get_token(
+                "https://management.azure.com/.default"
+            )
             return token_object.token
         except Exception as e:
             logger.error(f"Failed to obtain Azure ARM token: {str(e)}")
@@ -50,16 +50,14 @@ class VideoIndexerService:
             f"/generateAccessToken?api-version=2024-01-01"
         )
         headers = {"Authorization": f"Bearer {arm_token}"}
-        
-        payload = {
-            "permissionType": "Contributor",
-            "scope": "Account"
-        }
-        
+        payload = {"permissionType": "Contributor", "scope": "Account"}
+
         response = requests.post(url, headers=headers, json=payload, timeout=15)
         if response.status_code != 200:
-            raise Exception(f"Failed to obtain Video Indexer account token: {response.text}")
-            
+            raise Exception(
+                f"Failed to obtain Video Indexer account token: {response.text}"
+            )
+
         return response.json().get("accessToken")
 
     def get_account_access_token(self) -> str:
@@ -70,10 +68,10 @@ class VideoIndexerService:
     def download_youtube_video(self, url: str) -> str:
         """
         Downloads a YouTube video to a temporary local MP4 file.
-        Routes traffic through a standard proxy to bypass datacenter IP blocks.
+        Routes traffic through standard proxies (e.g., Webshare) to bypass datacenter blocks.
         """
         logger.info(f"Downloading YouTube video locally: {url}")
-        
+
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
         temp_path = temp_file.name
         temp_file.close()
@@ -93,15 +91,13 @@ class VideoIndexerService:
             "nocheckcertificate": True,
             "proxy": proxy_url if proxy_url else None,
             "extractor_args": {
-                "youtube": {
-                    "player_client": ["android", "ios", "mweb"]
-                }
+                "youtube": {"player_client": ["android", "ios", "mweb"]}
             },
             "http_headers": {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
                 "Accept": "*/*",
                 "Accept-Language": "en-US,en;q=0.5",
-            }
+            },
         }
 
         try:
@@ -113,97 +109,31 @@ class VideoIndexerService:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
             raise Exception(f"YouTube video download failed: {str(e)}")
-        """
-        Downloads a YouTube video to a temporary local MP4 file.
-        Routes traffic through a standard proxy to bypass datacenter IP blocks.
-        """
-        logger.info(f"Downloading YouTube video locally: {url}")
-        
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
-        temp_path = temp_file.name
-        temp_file.close()
 
-        proxy_url = os.getenv("YOUTUBE_PROXY_URL")
+    def upload_video_file(self, file_path: str, video_name: str) -> str:
+        """Uploads a local video file directly to Azure Video Indexer as multipart/form-data."""
+        logger.info(f"Uploading local file to Azure Video Indexer: {file_path}")
+        token = self.get_account_access_token()
+        api_url = f"https://api.videoindexer.ai/{self.location}/Accounts/{self.account_id}/Videos"
 
-        if proxy_url:
-            logger.info("Routing yt-dlp through proxy...")
-        else:
-            logger.warning("No YOUTUBE_PROXY_URL set. Attempting direct connection...")
-
-        ydl_opts = {
-            "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-            "outtmpl": temp_path,
-            "quiet": True,
-            "overwrites": True,
-            "nocheckcertificate": True,
-            "proxy": proxy_url if proxy_url else None,
-            "extractor_args": {
-                "youtube": {
-                    "player_client": ["android", "ios", "mweb"]
-                }
-            },
-            "http_headers": {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-                "Accept": "*/*",
-                "Accept-Language": "en-US,en;q=0.5",
-            }
+        params = {
+            "accessToken": token,
+            "name": video_name,
+            "privacy": "Private",
+            "indexingPreset": "Basic",
+            "streamingPreset": "NoStreaming",
         }
 
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
-            logger.info(f"Download completed successfully: {temp_path}")
-            return temp_path
-        except Exception as e:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-            raise Exception(f"YouTube video download failed: {str(e)}")        """
-        Downloads a YouTube video to a temporary local MP4 file.
-        Routes traffic through ScrapingAnt / residential proxy to bypass datacenter blocks.
-        """
-        logger.info(f"Downloading YouTube video locally: {url}")
-        
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
-        temp_path = temp_file.name
-        temp_file.close()
+        with open(file_path, "rb") as file_data:
+            files = {"file": (os.path.basename(file_path), file_data, "video/mp4")}
+            response = requests.post(api_url, params=params, files=files, timeout=300)
 
-        # Retrieve residential proxy URL from environment variables
-        proxy_url = os.getenv("YOUTUBE_PROXY_URL")
-
-        if proxy_url:
-            logger.info("YOUTUBE_PROXY_URL detected. Routing yt-dlp through proxy...")
+        if response.status_code == 200:
+            video_id = response.json().get("id")
+            logger.info(f"File upload successful. Video ID: {video_id}")
+            return video_id
         else:
-            logger.warning("No YOUTUBE_PROXY_URL set. Attempting direct connection...")
-
-        ydl_opts = {
-            "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-            "outtmpl": temp_path,
-            "quiet": True,
-            "overwrites": True,
-            # Disable SSL certificate check required for ScrapingAnt proxy port
-            "nocheckcertificate": True,
-            # Route traffic through proxy
-            "proxy": proxy_url if proxy_url else None,
-            "extractor_args": {
-                "youtube": {
-                    # Mobile/TV player clients work best with residential proxies
-                    "player_client": ["android", "ios", "mweb"]
-                }
-            },
-            "http_headers": {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            }
-        }
-
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
-            logger.info(f"Download completed successfully: {temp_path}")
-            return temp_path
-        except Exception as e:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-            raise Exception(f"YouTube video download failed: {str(e)}")
+            raise Exception(f"Failed to upload local video file: {response.text}")
 
     def upload_video_from_url(self, video_url: str, video_name: str) -> str:
         """
@@ -219,11 +149,11 @@ class VideoIndexerService:
             "privacy": "Private",
             "videoUrl": video_url,
             "indexingPreset": "Basic",
-            "streamingPreset": "NoStreaming"
+            "streamingPreset": "NoStreaming",
         }
 
         logger.info(f"Submitting video URL to Azure Video Indexer: {video_url}")
-        
+
         try:
             response = requests.post(api_url, params=params, timeout=30)
             if response.status_code == 200:
@@ -234,7 +164,9 @@ class VideoIndexerService:
                     "Switching to local download & upload fallback..."
                 )
         except Exception as e:
-            logger.warning(f"Direct URL upload attempt failed ({str(e)}). Switching to local download fallback...")
+            logger.warning(
+                f"Direct URL upload attempt failed ({str(e)}). Switching to local download fallback..."
+            )
 
         # 🔄 FALLBACK: Download video locally via yt-dlp and upload directly
         temp_file_path = None
@@ -258,14 +190,16 @@ class VideoIndexerService:
 
         while True:
             if time.time() - start_time > timeout_seconds:
-                raise TimeoutError(f"Processing timed out after {timeout_seconds} seconds for video ID '{video_id}'.")
+                raise TimeoutError(
+                    f"Processing timed out after {timeout_seconds} seconds for video ID '{video_id}'."
+                )
 
             vi_token = self.get_account_access_token()
             api_url = f"https://api.videoindexer.ai/{self.location}/Accounts/{self.account_id}/Videos/{video_id}/Index"
             params = {"accessToken": vi_token}
 
             response = requests.get(api_url, params=params, timeout=15)
-            
+
             if response.status_code == 200:
                 data = response.json()
                 state = data.get("state")
@@ -276,11 +210,15 @@ class VideoIndexerService:
                 elif state == "Failed":
                     raise Exception("Video indexing failed in Azure Video Indexer.")
                 elif state == "Quarantined":
-                    raise Exception("Video quarantined due to content policy violation.")
+                    raise Exception(
+                        "Video quarantined due to content policy violation."
+                    )
 
                 logger.info(f"Video state: {state}... Waiting {poll_interval}s.")
             else:
-                logger.warning(f"Polling warning ({response.status_code}): {response.text}")
+                logger.warning(
+                    f"Polling warning ({response.status_code}): {response.text}"
+                )
 
             time.sleep(poll_interval)
             poll_interval = min(poll_interval + 2, 15)
@@ -310,10 +248,7 @@ class VideoIndexerService:
         return {
             "transcript": " ".join(transcript_lines),
             "ocr_text": list(set(ocr_lines)),  # Deduplicate OCR text entries
-            "video_metadata": {
-                "duration": duration,
-                "platform": "YouTube"
-            }
+            "video_metadata": {"duration": duration, "platform": "YouTube"},
         }
 
     def delete_video(self, video_id: str):
@@ -322,11 +257,15 @@ class VideoIndexerService:
             token = self.get_account_access_token()
             api_url = f"https://api.videoindexer.ai/{self.location}/Accounts/{self.account_id}/Videos/{video_id}"
             params = {"accessToken": token}
-            
+
             response = requests.delete(api_url, params=params, timeout=15)
             if response.status_code == 204:
-                logger.info(f"Successfully deleted Video ID '{video_id}' from Azure Video Indexer.")
+                logger.info(
+                    f"Successfully deleted Video ID '{video_id}' from Azure Video Indexer."
+                )
             else:
-                logger.warning(f"Failed to delete Video ID '{video_id}': {response.text}")
+                logger.warning(
+                    f"Failed to delete Video ID '{video_id}': {response.text}"
+                )
         except Exception as e:
             logger.error(f"Error while deleting Video ID '{video_id}': {str(e)}")
