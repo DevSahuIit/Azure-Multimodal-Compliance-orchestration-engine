@@ -70,13 +70,23 @@ class VideoIndexerService:
     def download_youtube_video(self, url: str) -> str:
         """
         Downloads a YouTube video to a temporary local MP4 file.
-        Uses proxy and updated extractor clients to bypass 403 Forbidden errors.
+        Uses environment cookies / proxy / client fallbacks to bypass bot blocks.
         """
         logger.info(f"Downloading YouTube video locally: {url}")
         
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
         temp_path = temp_file.name
         temp_file.close()
+
+        cookie_file_path = None
+        cookies_text = os.getenv("YOUTUBE_COOKIES_TEXT")
+
+        # Dynamically create temporary cookies file if env var is populated
+        if cookies_text:
+            cookie_file = tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".txt")
+            cookie_file.write(cookies_text)
+            cookie_file_path = cookie_file.name
+            cookie_file.close()
 
         proxy_url = os.getenv("YOUTUBE_PROXY_URL")
 
@@ -86,17 +96,16 @@ class VideoIndexerService:
             "quiet": True,
             "overwrites": True,
             "nocheckcertificate": True,
+            "cookiefile": cookie_file_path if cookie_file_path else None,
             "proxy": proxy_url if proxy_url else None,
             "extractor_args": {
                 "youtube": {
-                    # Uses modern, less-throttled player clients
-                    "player_client": ["ios", "android", "mweb"],
-                    "player_skip": ["webpage", "configs"]
+                    # Avoid desktop web client to reduce bot verification triggers
+                    "player_client": ["ios", "android", "mweb"]
                 }
             },
             "http_headers": {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-                "Accept-Language": "en-US,en;q=0.9",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
             }
         }
 
@@ -109,6 +118,9 @@ class VideoIndexerService:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
             raise Exception(f"YouTube video download failed: {str(e)}")
+        finally:
+            if cookie_file_path and os.path.exists(cookie_file_path):
+                os.remove(cookie_file_path)
 
     def upload_video_from_url(self, video_url: str, video_name: str) -> str:
         """
