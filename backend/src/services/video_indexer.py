@@ -103,8 +103,7 @@ class VideoIndexerService:
             "proxy": proxy_url if proxy_url else None,
             "extractor_args": {
                 "youtube": {
-                    "player_client": ["mweb", "web", "tv"],
-                    "skip": ["hls", "dash"],  # Skip encrypted manifest formats
+                    "player_client": ["tv_embedded", "android"],
                 }
             },
             "http_headers": {
