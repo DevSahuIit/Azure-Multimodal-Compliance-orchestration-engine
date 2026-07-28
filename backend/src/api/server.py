@@ -2,12 +2,13 @@ import os
 import uuid
 import time
 import logging
-import secrets
 import requests
+import traceback
+from contextlib import asynccontextmanager
 from typing import List, Optional
 
 import bcrypt
-import libsql_experimental as libsql  # <-- Cloud database client
+import libsql_experimental as libsql  # Cloud database client
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,7 +22,6 @@ load_dotenv(override=True)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("api_server")
 
-setup_telemetry()
 
 # Helper to fetch YouTube Video Title fast via oEmbed
 def get_youtube_title(video_url: str) -> str:
@@ -83,11 +83,10 @@ def init_db():
         """)
         conn.commit()
         conn.close()
+        logger.info("Database schema initialized successfully.")
     except Exception as e:
         logger.error(f"Database initialization failed: {str(e)}")
 
-# Invoke database setup on startup
-init_db()
 
 def compute_evaluation_metrics(compliance_results: list) -> dict:
     total_checks = len(compliance_results)
@@ -105,6 +104,7 @@ def compute_evaluation_metrics(compliance_results: list) -> dict:
         "violations_count": len(violations)
     }
 
+
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10),
@@ -115,7 +115,28 @@ def invoke_compliance_graph_with_retry(initial_inputs: dict) -> dict:
     logger.info(f"Executing compliance graph for video_id: {initial_inputs.get('video_id')}")
     return compliance_graph.invoke(initial_inputs)
 
-app = FastAPI(title="Brand Guardian AI API", version="2.0.0")
+
+# -------------------------------------------------------------------
+# FASTAPI LIFESPAN & APP INIT
+# -------------------------------------------------------------------
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Initialize telemetry and DB schema during startup lifecycle
+    setup_telemetry()
+    init_db()
+    logger.info("Application startup sequence complete.")
+    
+    yield
+    
+    logger.info("Application shutting down.")
+
+
+app = FastAPI(
+    title="Brand Guardian AI API",
+    version="2.0.0",
+    lifespan=lifespan
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -190,10 +211,8 @@ async def login(credentials: UserLogIn):
     if not row:
         raise HTTPException(status_code=401, detail="Invalid email or password.")
 
-    # Parse response tuple safely
     user_id, full_name, email, hashed_password = row[0], row[1], row[2], row[3]
 
-    # Verify password against hash
     if not bcrypt.checkpw(credentials.password.encode('utf-8'), hashed_password.encode('utf-8')):
         raise HTTPException(status_code=401, detail="Invalid email or password.")
 
@@ -221,7 +240,6 @@ async def get_user_sessions(email: str):
     rows = cursor.fetchall()
     conn.close()
     
-    # Map raw tuple database results to structured list of dicts
     sessions = []
     for row in rows:
         sessions.append({
@@ -236,6 +254,7 @@ async def get_user_sessions(email: str):
             "created_at": str(row[8])
         })
     return sessions
+
 
 @app.post("/audit")
 async def audit_video(request: AuditRequest):
@@ -285,14 +304,13 @@ async def audit_video(request: AuditRequest):
             "compliance_results": compliance_results
         }
     except Exception as e:
-        import traceback
         error_details = traceback.format_exc()
-        logger.error(f"[Node: Indexer] Video Indexer failed:\n{error_details}")
+        logger.error(f"[Node: Indexer] Video Indexer / Workflow execution failed:\n{error_details}")
         
         return {
             "errors": [str(e)],
             "final_status": "fail",
-            "final_report": f"Audit skipped: {str(e)}",  # <-- Shows exact exception in UI
+            "final_report": f"Audit skipped: {str(e)}",
             "transcript": "",
             "ocr_text": []
         }
