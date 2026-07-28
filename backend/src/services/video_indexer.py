@@ -94,7 +94,8 @@ class VideoIndexerService:
             logger.warning("No YOUTUBE_PROXY_URL set. Attempting direct connection...")
 
         ydl_opts = {
-            "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best",  # drop the hls/dash skip, see below
+            # Target progressive single-file formats to bypass encrypted DASH/HLS manifests
+            "format": "best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best",
             "outtmpl": temp_path,
             "quiet": True,
             "overwrites": True,
@@ -103,10 +104,8 @@ class VideoIndexerService:
             "extractor_args": {
                 "youtube": {
                     "player_client": ["mweb", "web", "tv"],
-                },
-                "youtubepot-bgutilhttp": {
-                    "base_url": [os.getenv("POT_PROVIDER_URL", "http://127.0.0.1:4416")],
-                },
+                    "skip": ["hls", "dash"],  # Skip encrypted manifest formats
+                }
             },
             "http_headers": {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -160,35 +159,49 @@ class VideoIndexerService:
                 f"Failed to upload local video file ({response.status_code}): {response.text}"
             )
 
-
-    
-
-    
     def upload_video_from_url(self, video_url: str, video_name: str) -> str:
+        """
+        Sends video URL to Azure Video Indexer.
+        Automatically falls back to local download & multipart upload if YouTube blocks Azure URL fetching.
+        """
         token = self.get_account_access_token()
         api_url = f"https://api.videoindexer.ai/{self.clean_location}/Accounts/{self.account_id}/Videos"
 
-        is_youtube = "youtube.com" in video_url or "youtu.be" in video_url
+        params = {
+            "accessToken": token,
+            "name": video_name,
+            "privacy": "Private",
+            "videoUrl": video_url,
+            "indexingPreset": "Basic",
+            "streamingPreset": "NoStreaming",
+        }
 
-        if not is_youtube:
-            params = {
-                            "accessToken": token,
-                            "name": video_name,
-                            "privacy": "Private",
-                            "videoUrl": video_url,
-                            "indexingPreset": "Basic",
-                            "streamingPreset": "NoStreaming",
-                        }
-            try:
-                response = requests.post(api_url, params=params, timeout=30)
-                if response.status_code == 200:
-                    return response.json().get("id")
-                logger.warning(f"Direct URL upload rejected ({response.status_code}): {response.text}")
-            except Exception as e:
-                logger.warning(f"Direct URL upload attempt failed ({str(e)})")
+        logger.info(f"Submitting video URL to Azure Video Indexer: {video_url}")
 
-        # YouTube always needs local download + multipart upload
-    
+        try:
+            response = requests.post(api_url, params=params, timeout=30)
+            if response.status_code == 200:
+                return response.json().get("id")
+            else:
+                logger.warning(
+                    f"Direct URL upload rejected ({response.status_code}): {response.text}. "
+                    "Switching to local download & upload fallback..."
+                )
+        except Exception as e:
+            logger.warning(
+                f"Direct URL upload attempt failed ({str(e)}). Switching to local download fallback..."
+            )
+
+        # 🔄 FALLBACK: Download video locally via yt-dlp and upload directly
+        temp_file_path = None
+        try:
+            temp_file_path = self.download_youtube_video(video_url)
+            video_id = self.upload_video_file(temp_file_path, video_name)
+            return video_id
+        finally:
+            if temp_file_path and os.path.exists(temp_file_path):
+                os.remove(temp_file_path)
+                logger.info(f"Cleaned up temporary video file: {temp_file_path}")
 
     def wait_for_processing(self, video_id: str, timeout_seconds: int = 900) -> dict:
         """

@@ -28,8 +28,9 @@ def index_video_node(state: VideoAuditState) -> Dict[str, Any]:
 
     try:
         vi_service = VideoIndexerService()
+        azure_video_id = None
 
-        # Method 1: Try direct cloud URL upload to Azure Video Indexer (Bypasses yt-dlp & local disk)
+        # Method 1: Try direct cloud URL upload to Azure Video Indexer
         if hasattr(vi_service, "upload_video_from_url"):
             logger.info(
                 "[Node: Indexer] Submitting video URL directly to Azure Video Indexer..."
@@ -38,7 +39,7 @@ def index_video_node(state: VideoAuditState) -> Dict[str, Any]:
                 video_url=video_url, video_name=video_id_input
             )
         else:
-            # Method 2: Fallback to local download + upload
+            # Method 2: Fallback to local download + file upload
             temp_local_file = f"/tmp/temp_audit_{video_id_input}.mp4"
             if "youtube.com" in video_url or "youtu.be" in video_url:
                 local_path = vi_service.download_youtube_video(
@@ -47,13 +48,18 @@ def index_video_node(state: VideoAuditState) -> Dict[str, Any]:
             else:
                 raise Exception("Please provide a valid YouTube URL.")
 
-            # Inside index_video_node:
-            azure_video_id = vi_service.upload_video_from_url(
-                video_url=video_url, video_name=video_id_input
+            azure_video_id = vi_service.upload_video_file(
+                file_path=local_path, video_name=video_id_input
             )
 
             if os.path.exists(local_path):
                 os.remove(local_path)
+
+        # Validate Azure Video ID format before proceeding to polling
+        if not azure_video_id or not re.fullmatch(r"[A-Za-z0-9]{10}", azure_video_id):
+            raise Exception(
+                f"Upload did not return a valid Azure video ID (got: {azure_video_id!r})"
+            )
 
         logger.info(f"[Node: Indexer] Upload success. Azure Video ID: {azure_video_id}")
 
