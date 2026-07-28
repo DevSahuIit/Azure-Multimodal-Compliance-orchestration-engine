@@ -22,3 +22,4 @@ langchain-ollama
 langchain-huggingface
 sentence-transformers
 libsql-experimental
+bgutil-ytdlp-pot-provider>=1.0.0
