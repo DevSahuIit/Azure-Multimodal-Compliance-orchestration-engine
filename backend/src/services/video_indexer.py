@@ -59,9 +59,11 @@ class VideoIndexerService:
             "Content-Type": "application/json"
         }
         
+        # Binding the accountId explicitly avoids 401 token mismatch errors
         payload = {
             "permissionType": "Contributor",
-            "scope": "Account"
+            "scope": "Account",
+            "accountId": self.account_id
         }
 
         response = requests.post(url, headers=headers, json=payload, timeout=15)
@@ -117,6 +119,12 @@ class VideoIndexerService:
                 ydl.download([url])
             logger.info(f"Download completed successfully: {temp_path}")
             return temp_path
+        except yt_dlp.utils.DownloadError as e:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            if "DRM protected" in str(e):
+                raise Exception("This video is DRM-protected and cannot be downloaded.")
+            raise Exception(f"YouTube video download failed: {str(e)}")
         except Exception as e:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
