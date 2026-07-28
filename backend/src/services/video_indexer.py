@@ -59,7 +59,6 @@ class VideoIndexerService:
             "Content-Type": "application/json"
         }
         
-        # Explicit scope and permission requirements
         payload = {
             "permissionType": "Contributor",
             "scope": "Account"
