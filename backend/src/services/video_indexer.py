@@ -70,6 +70,95 @@ class VideoIndexerService:
     def download_youtube_video(self, url: str) -> str:
         """
         Downloads a YouTube video to a temporary local MP4 file.
+        Routes traffic through a standard proxy to bypass datacenter IP blocks.
+        """
+        logger.info(f"Downloading YouTube video locally: {url}")
+        
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+        temp_path = temp_file.name
+        temp_file.close()
+
+        proxy_url = os.getenv("YOUTUBE_PROXY_URL")
+
+        if proxy_url:
+            logger.info("Routing yt-dlp through proxy...")
+        else:
+            logger.warning("No YOUTUBE_PROXY_URL set. Attempting direct connection...")
+
+        ydl_opts = {
+            "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+            "outtmpl": temp_path,
+            "quiet": True,
+            "overwrites": True,
+            "nocheckcertificate": True,
+            "proxy": proxy_url if proxy_url else None,
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["android", "ios", "mweb"]
+                }
+            },
+            "http_headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                "Accept": "*/*",
+                "Accept-Language": "en-US,en;q=0.5",
+            }
+        }
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+            logger.info(f"Download completed successfully: {temp_path}")
+            return temp_path
+        except Exception as e:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            raise Exception(f"YouTube video download failed: {str(e)}")
+        """
+        Downloads a YouTube video to a temporary local MP4 file.
+        Routes traffic through a standard proxy to bypass datacenter IP blocks.
+        """
+        logger.info(f"Downloading YouTube video locally: {url}")
+        
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+        temp_path = temp_file.name
+        temp_file.close()
+
+        proxy_url = os.getenv("YOUTUBE_PROXY_URL")
+
+        if proxy_url:
+            logger.info("Routing yt-dlp through proxy...")
+        else:
+            logger.warning("No YOUTUBE_PROXY_URL set. Attempting direct connection...")
+
+        ydl_opts = {
+            "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+            "outtmpl": temp_path,
+            "quiet": True,
+            "overwrites": True,
+            "nocheckcertificate": True,
+            "proxy": proxy_url if proxy_url else None,
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["android", "ios", "mweb"]
+                }
+            },
+            "http_headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                "Accept": "*/*",
+                "Accept-Language": "en-US,en;q=0.5",
+            }
+        }
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+            logger.info(f"Download completed successfully: {temp_path}")
+            return temp_path
+        except Exception as e:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            raise Exception(f"YouTube video download failed: {str(e)}")        """
+        Downloads a YouTube video to a temporary local MP4 file.
         Routes traffic through ScrapingAnt / residential proxy to bypass datacenter blocks.
         """
         logger.info(f"Downloading YouTube video locally: {url}")
