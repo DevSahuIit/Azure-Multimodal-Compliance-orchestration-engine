@@ -9,6 +9,9 @@ from azure.identity import DefaultAzureCredential
 logger = logging.getLogger("video_indexer")
 
 
+import os
+from azure.identity import ClientSecretCredential, DefaultAzureCredential
+
 class VideoIndexerService:
     def __init__(self):
         self.account_id = os.getenv("AZURE_VI_ACCOUNT_ID")
@@ -16,8 +19,22 @@ class VideoIndexerService:
         self.subscription_id = os.getenv("AZURE_SUBSCRIPTION_ID")
         self.resource_group = os.getenv("AZURE_RESOURCE_GROUP")
         self.vi_name = os.getenv("AZURE_VI_NAME")
-        self.credential = DefaultAzureCredential()
 
+        tenant_id = os.getenv("AZURE_TENANT_ID")
+        client_id = os.getenv("AZURE_CLIENT_ID")
+        client_secret = os.getenv("AZURE_CLIENT_SECRET")
+
+        if tenant_id and client_id and client_secret:
+            # Explicit Client Secret authentication for cloud deployments (Render, Vercel)
+            self.credential = ClientSecretCredential(
+                tenant_id=tenant_id,
+                client_id=client_id,
+                client_secret=client_secret
+            )
+        else:
+            # Fallback to default credential chain (Azure CLI / Developer tools locally)
+            self.credential = DefaultAzureCredential()
+            
     def get_access_token(self) -> str:
         """Generates Azure Resource Manager (ARM) Access Token."""
         try:
