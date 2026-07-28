@@ -56,14 +56,11 @@ class VideoIndexerService:
         )
         headers = {
             "Authorization": f"Bearer {arm_token}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
-        
+
         # Only pass valid ARM schema properties
-        payload = {
-            "permissionType": "Contributor",
-            "scope": "Account"
-        }
+        payload = {"permissionType": "Contributor", "scope": "Account"}
 
         response = requests.post(url, headers=headers, json=payload, timeout=15)
         if response.status_code != 200:
@@ -97,14 +94,18 @@ class VideoIndexerService:
             logger.warning("No YOUTUBE_PROXY_URL set. Attempting direct connection...")
 
         ydl_opts = {
-            "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+            # Target progressive single-file formats to bypass encrypted DASH/HLS manifests
+            "format": "best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best",
             "outtmpl": temp_path,
             "quiet": True,
             "overwrites": True,
             "nocheckcertificate": True,
             "proxy": proxy_url if proxy_url else None,
             "extractor_args": {
-                "youtube": {"player_client": ["web", "tv", "mweb"]}
+                "youtube": {
+                    "player_client": ["mweb", "web", "tv"],
+                    "skip": ["hls", "dash"],  # Skip encrypted manifest formats
+                }
             },
             "http_headers": {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -122,7 +123,9 @@ class VideoIndexerService:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
             if "DRM protected" in str(e):
-                raise Exception("This video is DRM-protected and cannot be downloaded.")
+                raise Exception(
+                    "This video is DRM-protected and cannot be downloaded."
+                )
             raise Exception(f"YouTube video download failed: {str(e)}")
         except Exception as e:
             if os.path.exists(temp_path):
