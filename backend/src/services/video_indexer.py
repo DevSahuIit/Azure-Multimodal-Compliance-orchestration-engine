@@ -54,13 +54,21 @@ class VideoIndexerService:
             f"/providers/Microsoft.VideoIndexer/accounts/{self.vi_name}"
             f"/generateAccessToken?api-version=2024-01-01"
         )
-        headers = {"Authorization": f"Bearer {arm_token}"}
-        payload = {"permissionType": "Contributor", "scope": "Account"}
+        headers = {
+            "Authorization": f"Bearer {arm_token}",
+            "Content-Type": "application/json"
+        }
+        
+        # Explicit scope and permission requirements
+        payload = {
+            "permissionType": "Contributor",
+            "scope": "Account"
+        }
 
         response = requests.post(url, headers=headers, json=payload, timeout=15)
         if response.status_code != 200:
             raise Exception(
-                f"Failed to obtain Video Indexer account token: {response.text}"
+                f"Failed to obtain Video Indexer account token ({response.status_code}): {response.text}"
             )
 
         return response.json().get("accessToken")
