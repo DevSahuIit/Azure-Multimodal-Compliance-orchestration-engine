@@ -70,7 +70,7 @@ class VideoIndexerService:
     def download_youtube_video(self, url: str) -> str:
         """
         Downloads a YouTube video to a temporary local MP4 file.
-        Uses environment cookies / proxy / client fallbacks to bypass bot blocks.
+        Routes traffic through ScrapingAnt / residential proxy to bypass datacenter blocks.
         """
         logger.info(f"Downloading YouTube video locally: {url}")
         
@@ -78,30 +78,27 @@ class VideoIndexerService:
         temp_path = temp_file.name
         temp_file.close()
 
-        cookie_file_path = None
-        cookies_text = os.getenv("YOUTUBE_COOKIES_TEXT")
-
-        # Dynamically create temporary cookies file if env var is populated
-        if cookies_text:
-            cookie_file = tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".txt")
-            cookie_file.write(cookies_text)
-            cookie_file_path = cookie_file.name
-            cookie_file.close()
-
+        # Retrieve residential proxy URL from environment variables
         proxy_url = os.getenv("YOUTUBE_PROXY_URL")
+
+        if proxy_url:
+            logger.info("YOUTUBE_PROXY_URL detected. Routing yt-dlp through proxy...")
+        else:
+            logger.warning("No YOUTUBE_PROXY_URL set. Attempting direct connection...")
 
         ydl_opts = {
             "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
             "outtmpl": temp_path,
             "quiet": True,
             "overwrites": True,
+            # Disable SSL certificate check required for ScrapingAnt proxy port
             "nocheckcertificate": True,
-            "cookiefile": cookie_file_path if cookie_file_path else None,
+            # Route traffic through proxy
             "proxy": proxy_url if proxy_url else None,
             "extractor_args": {
                 "youtube": {
-                    # Avoid desktop web client to reduce bot verification triggers
-                    "player_client": ["ios", "android", "mweb"]
+                    # Mobile/TV player clients work best with residential proxies
+                    "player_client": ["android", "ios", "mweb"]
                 }
             },
             "http_headers": {
@@ -118,9 +115,6 @@ class VideoIndexerService:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
             raise Exception(f"YouTube video download failed: {str(e)}")
-        finally:
-            if cookie_file_path and os.path.exists(cookie_file_path):
-                os.remove(cookie_file_path)
 
     def upload_video_from_url(self, video_url: str, video_name: str) -> str:
         """
