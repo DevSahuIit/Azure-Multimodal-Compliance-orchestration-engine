@@ -1,21 +1,14 @@
 import json
+import os
+import logging
 import re
+import traceback
+from typing import Dict, Any
 
 from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import AzureSearch
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import SystemMessage, HumanMessage
-
-
-
-# --------------------------------------------------------------------------
-# NODE 1: Index Video Node (Azure VI Direct Upload -> Extract Text)
-# --------------------------------------------------------------------------
-import os
-import logging
-import traceback
-from typing import Dict, Any
 
 from backend.src.graph.state import VideoAuditState
 from backend.src.services.video_indexer import VideoIndexerService
@@ -23,39 +16,47 @@ from backend.src.services.video_indexer import VideoIndexerService
 logger = logging.getLogger("brand_guardian")
 logging.basicConfig(level=logging.INFO)
 
+# --------------------------------------------------------------------------
+# NODE 1: Index Video Node (Azure VI Direct Upload -> Extract Text)
+# --------------------------------------------------------------------------
 def index_video_node(state: VideoAuditState) -> Dict[str, Any]:
     video_url = state.get("video_url")
     video_id_input = state.get("video_id", "video_demo")
     
     logger.info(f"[Node: Indexer] Processing URL: {video_url}")
     
-    # Write to /tmp on Render (root directory may be read-only)
-    temp_local_file = f"/tmp/temp_audit_{video_id_input}.mp4"
-    
     try:
         vi_service = VideoIndexerService()
         
-        # Download YouTube video locally
-        if "youtube.com" in video_url or "youtu.be" in video_url:
-            local_path = vi_service.download_youtube_video(
-                url=video_url,
-                output_path=temp_local_file
+        # Method 1: Try direct cloud URL upload to Azure Video Indexer (Bypasses yt-dlp & local disk)
+        if hasattr(vi_service, "upload_video_from_url"):
+            logger.info("[Node: Indexer] Submitting video URL directly to Azure Video Indexer...")
+            azure_video_id = vi_service.upload_video_from_url(
+                video_url=video_url,
+                video_name=video_id_input
             )
         else:
-            raise Exception("Please provide a valid YouTube URL.")
+            # Method 2: Fallback to local download + upload
+            temp_local_file = f"/tmp/temp_audit_{video_id_input}.mp4"
+            if "youtube.com" in video_url or "youtu.be" in video_url:
+                local_path = vi_service.download_youtube_video(
+                    url=video_url,
+                    output_path=temp_local_file
+                )
+            else:
+                raise Exception("Please provide a valid YouTube URL.")
 
-        # Upload to Azure Video Indexer
-        azure_video_id = vi_service.upload_video(
-            video_path=local_path,
-            video_name=video_id_input
-        )
+            azure_video_id = vi_service.upload_video(
+                video_path=local_path,
+                video_name=video_id_input
+            )
+            
+            if os.path.exists(local_path):
+                os.remove(local_path)
+
         logger.info(f"[Node: Indexer] Upload success. Azure Video ID: {azure_video_id}")
         
-        # Cleanup temporary local file
-        if os.path.exists(local_path):
-            os.remove(local_path)
-            
-        # Poll and wait for processing completion
+        # Poll and wait for Azure indexing completion
         raw_insights = vi_service.wait_for_processing(azure_video_id)
         
         # Extract transcript, OCR, and metadata
@@ -68,13 +69,12 @@ def index_video_node(state: VideoAuditState) -> Dict[str, Any]:
         full_trace = traceback.format_exc()
         logger.error(f"[Node: Indexer] Video Indexer failed:\n{full_trace}")
         
-        # Output the exact exception to the UI so we can identify the missing component instantly
-        error_message = f"Video processing failed: {str(e)}"
+        err_type = type(e).__name__
+        err_detail = str(e) if str(e) else "Unknown extraction error"
         
         return {
-            "errors": [str(e)],
+            "errors": [f"{err_type}: {err_detail}"],
             "final_status": "fail",
-            "final_report": f"Audit skipped: {error_message}",
             "transcript": "",
             "ocr_text": []
         }
@@ -87,12 +87,17 @@ def audio_content_node(state: VideoAuditState) -> Dict[str, Any]:
     
     transcript = state.get("transcript", "")
     ocr_text = state.get("ocr_text", [])
+    errors = state.get("errors", [])
     
+    # Handle video indexing failure
     if not transcript and not ocr_text:
-        logger.warning("[Node: Auditor] No transcript/OCR available. Skipping audit.")
+        err_msg = errors[0] if errors else "Video processing failed to extract transcript or OCR text."
+        logger.warning(f"[Node: Auditor] Extraction failed. Reason: {err_msg}")
+        
         return {
             "final_status": "fail",
-            "final_report": "Audit skipped: Video processing failed to extract content."
+            "final_report": f"Audit skipped due to extraction error: {err_msg}",
+            "compliance_results": []
         }
 
     # 1. Initialize Groq Chat Model
@@ -102,7 +107,7 @@ def audio_content_node(state: VideoAuditState) -> Dict[str, Any]:
         temperature=0
     )
     
-    # 2. Cloud-compatible CPU Embedding Model (Replaces Ollama)
+    # 2. Lightweight Cloud-Compatible HuggingFace Embeddings
     embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
     # 3. Vector Store with Azure Search
@@ -113,10 +118,10 @@ def audio_content_node(state: VideoAuditState) -> Dict[str, Any]:
         embedding_function=embeddings.embed_query
     )
 
-    # Hybrid Retrieval Query Construction
-    query_text = transcript + " " + " ".join(ocr_text)
+    # RAG Retrieval Query Construction
+    query_text = (transcript + " " + " ".join(ocr_text)).strip()
     docs = vector_store.similarity_search(query_text, k=3)
-    retrieved_rules = "\n\n".join([doc.page_content for doc in docs])
+    retrieved_rules = "\n\n".join([doc.page_content for doc in docs]) if docs else "No specific compliance documents found."
 
     # System & User Prompts
     system_prompt = f"""
@@ -144,6 +149,7 @@ Instructions:
   "final_report": "<Markdown summary of the audit findings>"
 }}
 If no violations are found, set "status" to "pass" and "compliance_results" to an empty list [].
+Do NOT wrap the JSON in commentary or extra text outside the JSON structure.
 """
 
     user_message = f"""
@@ -158,31 +164,34 @@ On-Screen OCR Text: {ocr_text}
             HumanMessage(content=user_message)
         ])
         
-        content = response.content
+        content = response.content.strip()
 
         # Clean markdown backticks if present
         if "```json" in content:
             match = re.search(r"```json\s*([\s\S]*?)\s*```", content)
             if match:
-                content = match.group(1)
+                content = match.group(1).strip()
         elif "```" in content:
             match = re.search(r"```\s*([\s\S]*?)\s*```", content)
             if match:
-                content = match.group(1)
+                content = match.group(1).strip()
 
         audit_data = json.loads(content)
 
         return {
             "compliance_results": audit_data.get("compliance_results", []),
-            "final_status": audit_data.get("status", "fail"),
+            "final_status": audit_data.get("status", "pass"),
             "final_report": audit_data.get("final_report", "No report generated.")
         }
 
     except Exception as e:
         logger.error(f"[Node: Auditor] System error in auditor node: {str(e)}")
-        raw_resp = response.content if 'response' in locals() else None
+        raw_resp = response.content if 'response' in locals() else "None"
         logger.error(f"[Node: Auditor] Raw LLM Response: {raw_resp}")
+        
         return {
             "errors": [str(e)],
-            "final_status": "fail"
+            "final_status": "fail",
+            "final_report": f"Audit execution failed: {str(e)}",
+            "compliance_results": []
         }
