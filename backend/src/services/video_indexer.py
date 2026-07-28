@@ -68,29 +68,25 @@ class VideoIndexerService:
         except Exception as e:
             raise Exception(f"YouTube video download failed: {str(e)}")
 
-    def upload_video(self, video_path: str, video_name: str) -> str:
-        """Uploads the local binary video file to Azure Video Indexer with fast indexing presets."""
-        arm_token = self.get_access_token()
-        vi_token = self.get_account_token(arm_token)
-
+    def upload_video_from_url(self, video_url: str, video_name: str) -> str:
+        """Sends external YouTube video URL directly to Azure Video Indexer."""
+        token = self.get_account_access_token()
         api_url = f"https://api.videoindexer.ai/{self.location}/Accounts/{self.account_id}/Videos"
-        
-        # ⚡ OPTIMIZED PARAMS FOR SPEED:
+
         params = {
-            "accessToken": vi_token,
+            "accessToken": token,
             "name": video_name,
             "privacy": "Private",
-            "indexingPreset": "Basic",        # Basic indexing: extracts transcript + OCR without heavy CV
-            "streamingPreset": "NoStreaming"   # Skips video HLS re-encoding (saves ~90 seconds)
+            "videoUrl": video_url,            # Azure fetches the YouTube video directly
+            "indexingPreset": "Basic",
+            "streamingPreset": "NoStreaming"
         }
 
-        logger.info(f"Uploading binary file from {video_path} to Azure Video Indexer (Fast Preset)...")
-        with open(video_path, "rb") as video_file:
-            files = {"file": video_file}
-            response = requests.post(api_url, params=params, files=files)
+        logger.info(f"Submitting video URL directly to Azure Video Indexer: {video_url}")
+        response = requests.post(api_url, params=params)
 
         if response.status_code != 200:
-            raise Exception(f"Azure upload failed: {response.text}")
+            raise Exception(f"Azure Video Indexer upload failed ({response.status_code}): {response.text}")
 
         return response.json().get("id")
 
