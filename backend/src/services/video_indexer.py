@@ -4,13 +4,10 @@ import logging
 import tempfile
 import requests
 import yt_dlp
-from azure.identity import DefaultAzureCredential
+from azure.identity import ClientSecretCredential, DefaultAzureCredential
 
 logger = logging.getLogger("video_indexer")
 
-
-import os
-from azure.identity import ClientSecretCredential, DefaultAzureCredential
 
 class VideoIndexerService:
     def __init__(self):
@@ -34,7 +31,7 @@ class VideoIndexerService:
         else:
             # Fallback to default credential chain (Azure CLI / Developer tools locally)
             self.credential = DefaultAzureCredential()
-            
+
     def get_access_token(self) -> str:
         """Generates Azure Resource Manager (ARM) Access Token."""
         try:
@@ -53,6 +50,7 @@ class VideoIndexerService:
             f"/generateAccessToken?api-version=2024-01-01"
         )
         headers = {"Authorization": f"Bearer {arm_token}"}
+        
         payload = {
             "permissionType": "Contributor",
             "scope": "Account"
@@ -73,7 +71,6 @@ class VideoIndexerService:
         """Downloads a YouTube video to a temporary local MP4 file."""
         logger.info(f"Downloading YouTube video locally: {url}")
         
-        # Create a temporary file path safely
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
         temp_path = temp_file.name
         temp_file.close()
@@ -126,7 +123,10 @@ class VideoIndexerService:
         return video_id
 
     def upload_video_from_url(self, video_url: str, video_name: str) -> str:
-        """Sends a public direct video URL to Azure Video Indexer."""
+        """
+        Sends video URL to Azure Video Indexer.
+        Automatically falls back to local download & multipart upload if YouTube blocks Azure URL fetching.
+        """
         token = self.get_account_access_token()
         api_url = f"https://api.videoindexer.ai/{self.location}/Accounts/{self.account_id}/Videos"
 
@@ -140,12 +140,29 @@ class VideoIndexerService:
         }
 
         logger.info(f"Submitting video URL to Azure Video Indexer: {video_url}")
-        response = requests.post(api_url, params=params, timeout=30)
+        
+        try:
+            response = requests.post(api_url, params=params, timeout=30)
+            if response.status_code == 200:
+                return response.json().get("id")
+            else:
+                logger.warning(
+                    f"Direct URL upload rejected ({response.status_code}): {response.text}. "
+                    "Switching to local download & upload fallback..."
+                )
+        except Exception as e:
+            logger.warning(f"Direct URL upload attempt failed ({str(e)}). Switching to local download fallback...")
 
-        if response.status_code != 200:
-            raise Exception(f"Azure Video Indexer URL upload failed ({response.status_code}): {response.text}")
-
-        return response.json().get("id")
+        # 🔄 FALLBACK: Download video locally via yt-dlp and upload directly
+        temp_file_path = None
+        try:
+            temp_file_path = self.download_youtube_video(video_url)
+            video_id = self.upload_video_file(temp_file_path, video_name)
+            return video_id
+        finally:
+            if temp_file_path and os.path.exists(temp_file_path):
+                os.remove(temp_file_path)
+                logger.info(f"Cleaned up temporary video file: {temp_file_path}")
 
     def wait_for_processing(self, video_id: str, timeout_seconds: int = 900) -> dict:
         """
@@ -183,7 +200,6 @@ class VideoIndexerService:
                 logger.warning(f"Polling warning ({response.status_code}): {response.text}")
 
             time.sleep(poll_interval)
-            # Adaptive backoff up to a maximum of 15 seconds per poll
             poll_interval = min(poll_interval + 2, 15)
 
     def extract_data(self, vi_json: dict) -> dict:
