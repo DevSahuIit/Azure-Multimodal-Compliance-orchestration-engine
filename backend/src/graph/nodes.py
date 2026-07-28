@@ -1,8 +1,5 @@
 import json
-import os
-import logging
 import re
-from typing import Dict, Any, List
 
 from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -10,30 +7,53 @@ from langchain_community.vectorstores import AzureSearch
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import SystemMessage, HumanMessage
 
-from backend.src.graph.state import VideoAuditState, ComplianceIssue
+
+
+# --------------------------------------------------------------------------
+# NODE 1: Index Video Node (Azure VI Direct Upload -> Extract Text)
+# --------------------------------------------------------------------------
+import os
+import logging
+import traceback
+from typing import Dict, Any
+
+from backend.src.graph.state import VideoAuditState
 from backend.src.services.video_indexer import VideoIndexerService
 
 logger = logging.getLogger("brand_guardian")
 logging.basicConfig(level=logging.INFO)
 
-# --------------------------------------------------------------------------
-# NODE 1: Index Video Node (Azure VI Direct Upload -> Extract Text)
-# --------------------------------------------------------------------------
 def index_video_node(state: VideoAuditState) -> Dict[str, Any]:
     video_url = state.get("video_url")
     video_id_input = state.get("video_id", "video_demo")
     
     logger.info(f"[Node: Indexer] Processing URL: {video_url}")
     
+    # Write to /tmp on Render (root directory may be read-only)
+    temp_local_file = f"/tmp/temp_audit_{video_id_input}.mp4"
+    
     try:
         vi_service = VideoIndexerService()
         
-        # Pass URL directly to Azure Video Indexer
+        # Download YouTube video locally
+        if "youtube.com" in video_url or "youtu.be" in video_url:
+            local_path = vi_service.download_youtube_video(
+                url=video_url,
+                output_path=temp_local_file
+            )
+        else:
+            raise Exception("Please provide a valid YouTube URL.")
+
+        # Upload to Azure Video Indexer
         azure_video_id = vi_service.upload_video(
-            video_url=video_url,
+            video_path=local_path,
             video_name=video_id_input
         )
         logger.info(f"[Node: Indexer] Upload success. Azure Video ID: {azure_video_id}")
+        
+        # Cleanup temporary local file
+        if os.path.exists(local_path):
+            os.remove(local_path)
             
         # Poll and wait for processing completion
         raw_insights = vi_service.wait_for_processing(azure_video_id)
@@ -45,10 +65,16 @@ def index_video_node(state: VideoAuditState) -> Dict[str, Any]:
         return clean_data
 
     except Exception as e:
-        logger.error(f"[Node: Indexer] Video Indexer failed: {str(e)}")
+        full_trace = traceback.format_exc()
+        logger.error(f"[Node: Indexer] Video Indexer failed:\n{full_trace}")
+        
+        # Output the exact exception to the UI so we can identify the missing component instantly
+        error_message = f"Video processing failed: {str(e)}"
+        
         return {
             "errors": [str(e)],
             "final_status": "fail",
+            "final_report": f"Audit skipped: {error_message}",
             "transcript": "",
             "ocr_text": []
         }
