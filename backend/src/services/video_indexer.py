@@ -68,24 +68,35 @@ class VideoIndexerService:
         return self.get_account_token(arm_token)
 
     def download_youtube_video(self, url: str) -> str:
-        """Downloads a YouTube video to a temporary local MP4 file."""
+        """
+        Downloads a YouTube video to a temporary local MP4 file.
+        Uses a proxy (if configured) to bypass YouTube bot detection on cloud servers.
+        """
         logger.info(f"Downloading YouTube video locally: {url}")
         
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
         temp_path = temp_file.name
         temp_file.close()
 
+        # Retrieve proxy URL from environment variables if present
+        # Format: http://user:password@proxy_host:port or http://proxy_host:port
+        proxy_url = os.getenv("YOUTUBE_PROXY_URL")
+
         ydl_opts = {
             "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
             "outtmpl": temp_path,
             "quiet": True,
             "overwrites": True,
+            # Pass proxy URL to yt-dlp if configured
+            "proxy": proxy_url if proxy_url else None,
             "extractor_args": {
                 "youtube": {
-                    "player_client": ["android", "web"]
+                    # Avoid standard web client to bypass cloud IP bot checks
+                    "player_client": ["mweb", "tv", "android_vr", "android"]
                 }
             }
         }
+
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
