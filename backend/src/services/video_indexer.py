@@ -59,11 +59,10 @@ class VideoIndexerService:
             "Content-Type": "application/json"
         }
         
-        # Binding the accountId explicitly avoids 401 token mismatch errors
+        # Only pass valid ARM schema properties
         payload = {
             "permissionType": "Contributor",
-            "scope": "Account",
-            "accountId": self.account_id
+            "scope": "Account"
         }
 
         response = requests.post(url, headers=headers, json=payload, timeout=15)
