@@ -70,7 +70,7 @@ class VideoIndexerService:
     def download_youtube_video(self, url: str) -> str:
         """
         Downloads a YouTube video to a temporary local MP4 file.
-        Uses a proxy (if configured) to bypass YouTube bot detection on cloud servers.
+        Uses proxy and updated extractor clients to bypass 403 Forbidden errors.
         """
         logger.info(f"Downloading YouTube video locally: {url}")
         
@@ -78,8 +78,6 @@ class VideoIndexerService:
         temp_path = temp_file.name
         temp_file.close()
 
-        # Retrieve proxy URL from environment variables if present
-        # Format: http://user:password@proxy_host:port or http://proxy_host:port
         proxy_url = os.getenv("YOUTUBE_PROXY_URL")
 
         ydl_opts = {
@@ -87,13 +85,18 @@ class VideoIndexerService:
             "outtmpl": temp_path,
             "quiet": True,
             "overwrites": True,
-            # Pass proxy URL to yt-dlp if configured
+            "nocheckcertificate": True,
             "proxy": proxy_url if proxy_url else None,
             "extractor_args": {
                 "youtube": {
-                    # Avoid standard web client to bypass cloud IP bot checks
-                    "player_client": ["mweb", "tv", "android_vr", "android"]
+                    # Uses modern, less-throttled player clients
+                    "player_client": ["ios", "android", "mweb"],
+                    "player_skip": ["webpage", "configs"]
                 }
+            },
+            "http_headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+                "Accept-Language": "en-US,en;q=0.9",
             }
         }
 
@@ -106,32 +109,6 @@ class VideoIndexerService:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
             raise Exception(f"YouTube video download failed: {str(e)}")
-
-    def upload_video_file(self, file_path: str, video_name: str) -> str:
-        """Uploads a local video file directly to Azure Video Indexer via Multipart FormData."""
-        token = self.get_account_access_token()
-        api_url = f"https://api.videoindexer.ai/{self.location}/Accounts/{self.account_id}/Videos"
-
-        params = {
-            "accessToken": token,
-            "name": video_name,
-            "privacy": "Private",
-            "indexingPreset": "Basic",
-            "streamingPreset": "NoStreaming"
-        }
-
-        logger.info(f"Uploading local file '{file_path}' to Azure Video Indexer...")
-        
-        with open(file_path, "rb") as video_file:
-            files = {"file": (os.path.basename(file_path), video_file, "video/mp4")}
-            response = requests.post(api_url, params=params, files=files, timeout=300)
-
-        if response.status_code != 200:
-            raise Exception(f"Azure Video Indexer file upload failed ({response.status_code}): {response.text}")
-
-        video_id = response.json().get("id")
-        logger.info(f"Video uploaded successfully. Video ID: {video_id}")
-        return video_id
 
     def upload_video_from_url(self, video_url: str, video_name: str) -> str:
         """
