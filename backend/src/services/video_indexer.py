@@ -30,6 +30,11 @@ class VideoIndexerService:
             # Fallback to default credential chain (Azure CLI / Developer tools locally)
             self.credential = DefaultAzureCredential()
 
+    @property
+    def clean_location(self) -> str:
+        """Helper property to guarantee lowercased, whitespace-stripped Azure region."""
+        return (self.location or "eastus").lower().replace(" ", "")
+
     def get_access_token(self) -> str:
         """Generates Azure Resource Manager (ARM) Access Token."""
         try:
@@ -114,7 +119,7 @@ class VideoIndexerService:
         """Uploads a local video file directly to Azure Video Indexer as multipart/form-data."""
         logger.info(f"Uploading local file to Azure Video Indexer: {file_path}")
         token = self.get_account_access_token()
-        api_url = f"https://api.videoindexer.ai/{self.location}/Accounts/{self.account_id}/Videos"
+        api_url = f"https://api.videoindexer.ai/{self.clean_location}/Accounts/{self.account_id}/Videos"
 
         params = {
             "accessToken": token,
@@ -126,14 +131,16 @@ class VideoIndexerService:
 
         with open(file_path, "rb") as file_data:
             files = {"file": (os.path.basename(file_path), file_data, "video/mp4")}
-            response = requests.post(api_url, params=params, files=files, timeout=300)
+            response = requests.post(api_url, params=params, files=files, timeout=600)
 
         if response.status_code == 200:
             video_id = response.json().get("id")
             logger.info(f"File upload successful. Video ID: {video_id}")
             return video_id
         else:
-            raise Exception(f"Failed to upload local video file: {response.text}")
+            raise Exception(
+                f"Failed to upload local video file ({response.status_code}): {response.text}"
+            )
 
     def upload_video_from_url(self, video_url: str, video_name: str) -> str:
         """
@@ -141,7 +148,7 @@ class VideoIndexerService:
         Automatically falls back to local download & multipart upload if YouTube blocks Azure URL fetching.
         """
         token = self.get_account_access_token()
-        api_url = f"https://api.videoindexer.ai/{self.location}/Accounts/{self.account_id}/Videos"
+        api_url = f"https://api.videoindexer.ai/{self.clean_location}/Accounts/{self.account_id}/Videos"
 
         params = {
             "accessToken": token,
@@ -195,7 +202,7 @@ class VideoIndexerService:
                 )
 
             vi_token = self.get_account_access_token()
-            api_url = f"https://api.videoindexer.ai/{self.location}/Accounts/{self.account_id}/Videos/{video_id}/Index"
+            api_url = f"https://api.videoindexer.ai/{self.clean_location}/Accounts/{self.account_id}/Videos/{video_id}/Index"
             params = {"accessToken": vi_token}
 
             response = requests.get(api_url, params=params, timeout=15)
@@ -255,7 +262,7 @@ class VideoIndexerService:
         """Deletes the video from Azure Video Indexer to prevent account storage bloat."""
         try:
             token = self.get_account_access_token()
-            api_url = f"https://api.videoindexer.ai/{self.location}/Accounts/{self.account_id}/Videos/{video_id}"
+            api_url = f"https://api.videoindexer.ai/{self.clean_location}/Accounts/{self.account_id}/Videos/{video_id}"
             params = {"accessToken": token}
 
             response = requests.delete(api_url, params=params, timeout=15)
