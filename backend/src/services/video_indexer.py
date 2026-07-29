@@ -1,5 +1,6 @@
 import os
 import time
+import base64
 import logging
 import tempfile
 import requests
@@ -34,6 +35,73 @@ class VideoIndexerService:
     def clean_location(self) -> str:
         """Helper property to guarantee lowercased, whitespace-stripped Azure region."""
         return (self.location or "eastus").lower().replace(" ", "")
+
+    def _get_cookie_file(self) -> str | None:
+        """Locates Render Secret File cookies.txt or falls back to env/local file."""
+        # 1. Check for Render Secret File mounted path
+        mounted_cookie_path = "/etc/secrets/cookies.txt"
+        if os.path.exists(mounted_cookie_path):
+            return mounted_cookie_path
+
+        # 2. Check for local root secret path
+        local_cookie_path = os.path.join(os.getcwd(), "cookies.txt")
+        if os.path.exists(local_cookie_path):
+            return local_cookie_path
+
+        # 3. Fallback to base64 env var if secret file is not used
+        cookies_b64 = os.getenv("YOUTUBE_COOKIES_B64")
+        if cookies_b64:
+            try:
+                cookie_path = os.path.join(tempfile.gettempdir(), "yt_cookies.txt")
+                with open(cookie_path, "wb") as f:
+                    f.write(base64.b64decode(cookies_b64))
+                return cookie_path
+            except Exception as e:
+                logger.error(f"Failed to decode YOUTUBE_COOKIES_B64: {str(e)}")
+
+        logger.warning("No cookie file found (Secret File or YOUTUBE_COOKIES_B64).")
+        return None
+
+    def check_cookie_health(self) -> bool:
+        """
+        Runs a lightweight check against a public video to verify if cookies/POT provider work.
+        Logs clear warning if cookies trigger a bot check or authentication failure.
+        """
+        test_url = "https://www.youtube.com/watch?v=jNQXAC9IVRw"
+        logger.info("[Health Check] Validating YouTube cookies and extractor pipeline...")
+
+        cookie_file = self._get_cookie_file()
+        proxy_url = os.getenv("YOUTUBE_PROXY_URL")
+        pot_url = os.getenv("POT_PROVIDER_URL", "http://127.0.0.1:4416")
+
+        ydl_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "proxy": proxy_url if proxy_url else None,
+            "cookiefile": cookie_file,
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["android", "tv"],
+                },
+                "youtubepot-bgutilhttp": {
+                    "base_url": [pot_url],
+                },
+            },
+        }
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(test_url, download=False)
+                if info and info.get("id"):
+                    logger.info("[Health Check] SUCCESS: YouTube cookie session & extractor pipeline are healthy.")
+                    return True
+        except Exception as e:
+            err_msg = str(e)
+            if "Sign in to confirm you're not a bot" in err_msg or "cookies" in err_msg.lower():
+                logger.error("[Health Check] FAILED: YouTube cookies are EXPIRED or FLAGGED by bot protection!")
+            else:
+                logger.warning(f"[Health Check] Warning during health check: {err_msg}")
+            return False
 
     def get_access_token(self) -> str:
         """Generates Azure Resource Manager (ARM) Access Token."""
@@ -78,7 +146,7 @@ class VideoIndexerService:
     def download_youtube_video(self, url: str) -> str:
         """
         Downloads a YouTube video to a temporary local MP4 file.
-        Routes traffic through standard proxies (e.g., Webshare) to bypass datacenter blocks.
+        Routes traffic through proxies, mounted cookies, and POT provider.
         """
         logger.info(f"Downloading YouTube video locally: {url}")
 
@@ -87,6 +155,8 @@ class VideoIndexerService:
         temp_file.close()
 
         proxy_url = os.getenv("YOUTUBE_PROXY_URL")
+        pot_url = os.getenv("POT_PROVIDER_URL", "http://127.0.0.1:4416")
+        cookie_file = self._get_cookie_file()
 
         if proxy_url:
             logger.info("Routing yt-dlp through proxy...")
@@ -94,18 +164,20 @@ class VideoIndexerService:
             logger.warning("No YOUTUBE_PROXY_URL set. Attempting direct connection...")
 
         ydl_opts = {
-            # Target progressive single-file formats to bypass encrypted DASH/HLS manifests
-            "format": "best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best",
+            "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best",
             "outtmpl": temp_path,
             "quiet": True,
             "overwrites": True,
             "nocheckcertificate": True,
             "proxy": proxy_url if proxy_url else None,
+            "cookiefile": cookie_file,
             "extractor_args": {
                 "youtube": {
-                    "player_client": ["mweb", "web", "tv"],
-                    "skip": ["hls", "dash"],  # Skip encrypted manifest formats
-                }
+                    "player_client": ["android", "tv"],
+                },
+                "youtubepot-bgutilhttp": {
+                    "base_url": [pot_url],
+                },
             },
             "http_headers": {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -255,13 +327,11 @@ class VideoIndexerService:
         for video in vi_json.get("videos", []):
             insights = video.get("insights", {})
 
-            # Extract spoken dialogue transcript
             for item in insights.get("transcript", []):
                 text = item.get("text", "").strip()
                 if text:
                     transcript_lines.append(text)
 
-            # Extract on-screen OCR text
             for item in insights.get("ocr", []):
                 text = item.get("text", "").strip()
                 if text:
@@ -271,7 +341,7 @@ class VideoIndexerService:
 
         return {
             "transcript": " ".join(transcript_lines),
-            "ocr_text": list(set(ocr_lines)),  # Deduplicate OCR text entries
+            "ocr_text": list(set(ocr_lines)),
             "video_metadata": {"duration": duration, "platform": "YouTube"},
         }
 

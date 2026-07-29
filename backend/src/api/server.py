@@ -18,6 +18,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 
 from backend.src.api.telemetry import setup_telemetry
 from backend.src.graph.workflow import app as compliance_graph
+from backend.src.services.video_indexer import VideoIndexerService
 
 load_dotenv(override=True)
 logging.basicConfig(level=logging.INFO)
@@ -126,6 +127,14 @@ async def lifespan(app: FastAPI):
     # Setup telemetry and initialize database schema
     setup_telemetry()
     await asyncio.to_thread(init_db)
+    
+    # Run startup YouTube cookie and extraction health check
+    try:
+        vi_service = VideoIndexerService()
+        await asyncio.to_thread(vi_service.check_cookie_health)
+    except Exception as check_err:
+        logger.warning(f"Startup cookie health check encountered an issue: {str(check_err)}")
+
     logger.info("Application startup sequence complete.")
     
     yield
