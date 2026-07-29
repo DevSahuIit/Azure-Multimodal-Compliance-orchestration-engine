@@ -184,7 +184,7 @@ class VideoIndexerService:
             "cookiefile": cookie_file,
             "extractor_args": {
                 "youtube": {
-                    "player_client": ["android", "tv"],
+                    "player_client": ["tv_embedded", "android", "ios"],
                 },
                 "youtubepot-bgutilhttp": {
                     "base_url": [pot_url],
