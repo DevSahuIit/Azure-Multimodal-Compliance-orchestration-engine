@@ -1,4 +1,6 @@
 import os
+import re
+import json
 import uuid
 import time
 import logging
@@ -9,12 +11,11 @@ from contextlib import asynccontextmanager
 from typing import List, Optional, Dict, Any
 
 import bcrypt
-import libsql_experimental as libsql  # Cloud database client
+import libsql_experimental as libsql
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Depends, Header, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, HttpUrl
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from backend.src.api.telemetry import setup_telemetry
 from backend.src.graph.workflow import app as compliance_graph
@@ -25,7 +26,11 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("api_server")
 
 
-# Helper to fetch YouTube Video Title fast via oEmbed
+def extract_youtube_id(url: str) -> Optional[str]:
+    match = re.search(r"(?:v=|youtu\.be/|embed/)([\w-]{11})", url)
+    return match.group(1) if match else None
+
+
 def get_youtube_title(video_url: str) -> str:
     try:
         oembed_url = f"https://www.youtube.com/oembed?url={video_url}&format=json"
@@ -34,29 +39,27 @@ def get_youtube_title(video_url: str) -> str:
             return res.json().get("title", video_url)
     except Exception as e:
         logger.warning(f"Failed to fetch YouTube title via oEmbed: {str(e)}")
-    return video_url  # Fallback to URL if title fetch fails
+    return video_url
 
 
-# Helper to handle Turso Cloud DB connection with local SQLite fallback
 def get_db_connection():
     turso_url = os.getenv("TURSO_DATABASE_URL")
     turso_token = os.getenv("TURSO_AUTH_TOKEN")
-    
+
     if turso_url and turso_token:
-        # Connect to Turso Cloud DB
         return libsql.connect(database=turso_url, auth_token=turso_token)
     else:
-        # Fallback to local SQLite file
         is_vercel = os.getenv("VERCEL") == "1"
         db_file = "/tmp/audit_sessions.db" if is_vercel else "audit_sessions.db"
-        return libsql.connect(db_file)
+        # Set busy timeout to prevent concurrent lock failures
+        return libsql.connect(db_file, timeout=30.0)
 
 
 def init_db():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id TEXT PRIMARY KEY,
@@ -67,7 +70,7 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        
+
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS audit_sessions (
                 session_id TEXT PRIMARY KEY,
@@ -83,6 +86,17 @@ def init_db():
                 FOREIGN KEY (user_email) REFERENCES users (email)
             )
         """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS video_cache (
+                youtube_id TEXT PRIMARY KEY,
+                transcript TEXT,
+                ocr_text TEXT,
+                video_metadata TEXT,
+                cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         conn.commit()
         conn.close()
         logger.info("Database schema initialized successfully.")
@@ -97,25 +111,50 @@ def compute_evaluation_metrics(compliance_results: list) -> dict:
 
     violations = [c for c in compliance_results if str(c.get("status", "")).upper() in ["FAIL", "FAILED", "VIOLATION"]]
     critical_breaches = [c for c in violations if str(c.get("severity", "")).capitalize() == "Critical"]
-    
+
     score = 100 - (len(violations) * 15) - (len(critical_breaches) * 10)
     score = max(0, min(100, score))
 
+    return {"compliance_score": score, "violations_count": len(violations)}
+
+
+def invoke_compliance_graph(initial_inputs: dict) -> dict:
+    logger.info(f"Executing compliance graph for video_id: {initial_inputs.get('video_id')}")
+    return compliance_graph.invoke(initial_inputs)
+
+
+def read_video_cache(youtube_id: str) -> Optional[dict]:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT transcript, ocr_text, video_metadata FROM video_cache WHERE youtube_id = ?",
+        (youtube_id,),
+    )
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
     return {
-        "compliance_score": score,
-        "violations_count": len(violations)
+        "transcript": row[0] or "",
+        "ocr_text": json.loads(row[1]) if row[1] else [],
+        "video_metadata": json.loads(row[2]) if row[2] else {},
     }
 
 
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=2, max=10),
-    retry=retry_if_exception_type(Exception),
-    reraise=True
-)
-def invoke_compliance_graph_with_retry(initial_inputs: dict) -> dict:
-    logger.info(f"Executing compliance graph for video_id: {initial_inputs.get('video_id')}")
-    return compliance_graph.invoke(initial_inputs)
+def write_video_cache(youtube_id: str, transcript: str, ocr_text: list, video_metadata: dict):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """INSERT INTO video_cache (youtube_id, transcript, ocr_text, video_metadata)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(youtube_id) DO UPDATE SET
+               transcript=excluded.transcript,
+               ocr_text=excluded.ocr_text,
+               video_metadata=excluded.video_metadata""",
+        (youtube_id, transcript, json.dumps(ocr_text), json.dumps(video_metadata)),
+    )
+    conn.commit()
+    conn.close()
 
 
 # -------------------------------------------------------------------
@@ -124,11 +163,9 @@ def invoke_compliance_graph_with_retry(initial_inputs: dict) -> dict:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Setup telemetry and initialize database schema
     setup_telemetry()
     await asyncio.to_thread(init_db)
-    
-    # Run startup YouTube cookie and extraction health check
+
     try:
         vi_service = VideoIndexerService()
         await asyncio.to_thread(vi_service.check_cookie_health)
@@ -136,25 +173,25 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Startup cookie health check encountered an issue: {str(check_err)}")
 
     logger.info("Application startup sequence complete.")
-    
     yield
-    
     logger.info("Application shutting down.")
 
 
 app = FastAPI(
     title="Brand Guardian AI API",
     version="2.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
+
+# Parsed allowed origins from ENV or fallbacks
+ALLOWED_ORIGINS = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:5173,https://azure-multimodal-compliance-orchest.vercel.app"
+).split(",")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "https://azure-multimodal-compliance-orchest.vercel.app",
-        "*"
-    ],
+    allow_origins=[origin.strip() for origin in ALLOWED_ORIGINS],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -207,7 +244,7 @@ async def signup(user: UserSignUp):
         if "UNIQUE" in str(e).upper() or "INTEGRITY" in str(e).upper():
             raise HTTPException(status_code=400, detail="User with this email already exists.")
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-    
+
     return {
         "message": "User created successfully",
         "user": {"id": user_id, "email": email_clean, "full_name": user.full_name}
@@ -217,7 +254,7 @@ async def signup(user: UserSignUp):
 @app.post("/auth/login")
 async def login(credentials: UserLogIn):
     email_clean = credentials.email.lower().strip()
-    
+
     def _fetch_user():
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -238,11 +275,7 @@ async def login(credentials: UserLogIn):
 
     return {
         "message": "Login successful",
-        "user": {
-            "id": user_id,
-            "email": email,
-            "full_name": full_name
-        }
+        "user": {"id": user_id, "email": email, "full_name": full_name}
     }
 
 # -------------------------------------------------------------------
@@ -257,10 +290,10 @@ async def get_user_sessions(email: str):
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute(
-            """SELECT session_id, video_url, video_title, status, final_report, 
-                      compliance_score, latency_sec, violations_count, created_at 
-               FROM audit_sessions 
-               WHERE user_email = ? 
+            """SELECT session_id, video_url, video_title, status, final_report,
+                      compliance_score, latency_sec, violations_count, created_at
+               FROM audit_sessions
+               WHERE user_email = ?
                ORDER BY created_at DESC""",
             (email_clean,)
         )
@@ -269,7 +302,7 @@ async def get_user_sessions(email: str):
         return rows
 
     rows = await asyncio.to_thread(_fetch_sessions)
-    
+
     sessions = []
     for row in rows:
         sessions.append({
@@ -294,6 +327,7 @@ async def audit_video(request: AuditRequest):
     video_url_str = str(request.video_url).strip()
 
     video_title = await asyncio.to_thread(get_youtube_title, video_url_str)
+    youtube_id = extract_youtube_id(video_url_str)
 
     initial_inputs = {
         "video_url": video_url_str,
@@ -302,14 +336,29 @@ async def audit_video(request: AuditRequest):
         "errors": []
     }
 
+    if youtube_id:
+        cached = await asyncio.to_thread(read_video_cache, youtube_id)
+        if cached:
+            logger.info(f"[Session: {session_id}] Cache hit for YouTube ID {youtube_id}.")
+            initial_inputs.update(cached)
+
     start_time = time.time()
     try:
-        final_state = await asyncio.to_thread(invoke_compliance_graph_with_retry, initial_inputs)
+        final_state = await asyncio.to_thread(invoke_compliance_graph, initial_inputs)
         execution_latency = round(time.time() - start_time, 2)
-        
+
         status_val = final_state.get("final_status", "COMPLETED")
         final_report = final_state.get("final_report", "No report generated.")
         compliance_results = final_state.get("compliance_results", [])
+
+        if youtube_id and final_state.get("transcript") and status_val != "fail":
+            await asyncio.to_thread(
+                write_video_cache,
+                youtube_id,
+                final_state.get("transcript", ""),
+                final_state.get("ocr_text", []),
+                final_state.get("video_metadata", {}),
+            )
 
         metrics = compute_evaluation_metrics(compliance_results)
 
@@ -317,8 +366,8 @@ async def audit_video(request: AuditRequest):
             conn = get_db_connection()
             cursor = conn.cursor()
             cursor.execute(
-                """INSERT INTO audit_sessions 
-                   (session_id, user_email, video_url, video_title, status, final_report, compliance_score, latency_sec, violations_count) 
+                """INSERT INTO audit_sessions
+                   (session_id, user_email, video_url, video_title, status, final_report, compliance_score, latency_sec, violations_count)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (session_id, email_clean, video_url_str, video_title, status_val, final_report, metrics["compliance_score"], execution_latency, metrics["violations_count"])
             )
@@ -344,17 +393,16 @@ async def audit_video(request: AuditRequest):
         execution_latency = round(time.time() - start_time, 2)
         error_details = traceback.format_exc()
         logger.error(f"[Session: {session_id}] Workflow execution failed:\n{error_details}")
-        
+
         error_msg = f"Audit skipped: {str(e)}"
 
-        # Save failed attempt in database for user session visibility
         def _record_failed_session():
             try:
                 conn = get_db_connection()
                 cursor = conn.cursor()
                 cursor.execute(
-                    """INSERT INTO audit_sessions 
-                       (session_id, user_email, video_url, video_title, status, final_report, compliance_score, latency_sec, violations_count) 
+                    """INSERT INTO audit_sessions
+                       (session_id, user_email, video_url, video_title, status, final_report, compliance_score, latency_sec, violations_count)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (session_id, email_clean, video_url_str, video_title, "FAILED", error_msg, 0, execution_latency, 0)
                 )
