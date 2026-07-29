@@ -37,25 +37,36 @@ class VideoIndexerService:
         return (self.location or "eastus").lower().replace(" ", "")
 
     def _get_cookie_file(self) -> str | None:
-        """Locates Render Secret File cookies.txt or falls back to env/local file."""
+        """Locates mounted cookies file or falls back to env, copying to /tmp for write access."""
+        writable_cookie_path = os.path.join(tempfile.gettempdir(), "yt_cookies.txt")
+
         # 1. Check for Render Secret File mounted path
         mounted_cookie_path = "/etc/secrets/cookies.txt"
         if os.path.exists(mounted_cookie_path):
-            return mounted_cookie_path
+            try:
+                import shutil
+                shutil.copyfile(mounted_cookie_path, writable_cookie_path)
+                return writable_cookie_path
+            except Exception as e:
+                logger.error(f"Failed to copy mounted secret cookies to temp path: {str(e)}")
 
         # 2. Check for local root secret path
         local_cookie_path = os.path.join(os.getcwd(), "cookies.txt")
         if os.path.exists(local_cookie_path):
-            return local_cookie_path
+            try:
+                import shutil
+                shutil.copyfile(local_cookie_path, writable_cookie_path)
+                return writable_cookie_path
+            except Exception as e:
+                logger.error(f"Failed to copy local cookies to temp path: {str(e)}")
 
         # 3. Fallback to base64 env var if secret file is not used
         cookies_b64 = os.getenv("YOUTUBE_COOKIES_B64")
         if cookies_b64:
             try:
-                cookie_path = os.path.join(tempfile.gettempdir(), "yt_cookies.txt")
-                with open(cookie_path, "wb") as f:
+                with open(writable_cookie_path, "wb") as f:
                     f.write(base64.b64decode(cookies_b64))
-                return cookie_path
+                return writable_cookie_path
             except Exception as e:
                 logger.error(f"Failed to decode YOUTUBE_COOKIES_B64: {str(e)}")
 
