@@ -23,3 +23,26 @@ langchain-huggingface
 sentence-transformers
 libsql-experimental
 bgutil-ytdlp-pot-provider>=1.0.0
+fastapi>=0.110.0
+uvicorn>=0.28.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+python-dotenv>=1.0.0
+requests>=2.31.0
+bcrypt>=4.1.2
+libsql-experimental>=0.0.34
+
+# Lightweight YouTube API & Scrapers (In-Memory, No Downloads)
+youtube-transcript-api>=0.6.2
+yt-dlp>=2024.3.10  # Used ONLY for in-memory metadata fetching
+
+# Orchestration & LLM / RAG
+langchain-core>=0.3.0
+langchain-groq>=0.2.0
+langchain-huggingface>=0.1.0
+langchain-community>=0.3.0
+langgraph>=0.2.0
+
+# Vector Store & Azure Monitor
+azure-search-documents>=11.4.0
+azure-monitor-opentelemetry>=1.1.0

@@ -1,7 +1,5 @@
-import json
 import os
 import logging
-import re
 import traceback
 from typing import Dict, Any, List
 
@@ -17,9 +15,7 @@ from backend.src.services.video_indexer import VideoIndexerService
 logger = logging.getLogger("brand_guardian")
 logging.basicConfig(level=logging.INFO)
 
-# --------------------------------------------------------------------------
-# GLOBAL MODEL / VECTOR STORE SINGLETONS (Loaded once, reused globally)
-# --------------------------------------------------------------------------
+# Singletons for RAG Vector Store
 _embeddings = None
 _vector_store = None
 
@@ -27,7 +23,7 @@ _vector_store = None
 def get_vector_store() -> AzureSearch:
     global _embeddings, _vector_store
     if _vector_store is None:
-        logger.info("[Initialization] Loading MiniLM Embeddings & Azure Vector Store...")
+        logger.info("[Initialization] Loading Embeddings & Azure Vector Store...")
         _embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
         _vector_store = AzureSearch(
             azure_search_endpoint=os.getenv("AZURE_SEARCH_ENDPOINT"),
@@ -38,9 +34,6 @@ def get_vector_store() -> AzureSearch:
     return _vector_store
 
 
-# --------------------------------------------------------------------------
-# STRUCTURED OUTPUT PYDANTIC SCHEMAS
-# --------------------------------------------------------------------------
 class ComplianceViolation(BaseModel):
     category: str = Field(description="Name of the violation category")
     severity: str = Field(description="Severity degree: critical, high, medium, or low")
@@ -54,54 +47,32 @@ class AuditResult(BaseModel):
 
 
 # --------------------------------------------------------------------------
-# NODE 1: Index Video Node (Cache-aware Azure VI Upload -> Extract Text)
+# NODE 1: Lightweight In-Memory Indexer Node
 # --------------------------------------------------------------------------
 def index_video_node(state: VideoAuditState) -> Dict[str, Any]:
     video_url = state.get("video_url")
-    video_id_input = state.get("video_id", "video_demo")
 
-    if state.get("transcript") or state.get("ocr_text"):
-        logger.info("[Node: Indexer] Using cached transcript/OCR — skipping download & re-indexing.")
+    if state.get("transcript"):
+        logger.info("[Node: Indexer] Using cached transcript — skipping extraction.")
         return {
             "transcript": state.get("transcript", ""),
             "ocr_text": state.get("ocr_text", []),
             "video_metadata": state.get("video_metadata", {}),
         }
 
-    logger.info(f"[Node: Indexer] Processing URL: {video_url}")
+    logger.info(f"[Node: Indexer] Fetching transcript directly from URL: {video_url}")
 
     try:
         vi_service = VideoIndexerService()
-
-        azure_video_id = vi_service.upload_video_from_url(
-            video_url=video_url, video_name=video_id_input
-        )
-
-        if not azure_video_id or not re.fullmatch(r"[A-Za-z0-9]{10}", azure_video_id):
-            raise Exception(f"Upload did not return a valid Azure video ID (got: {azure_video_id!r})")
-
-        logger.info(f"[Node: Indexer] Upload success. Azure Video ID: {azure_video_id}")
-
-        raw_insights = vi_service.wait_for_processing(azure_video_id)
-        clean_data = vi_service.extract_data(raw_insights)
-        logger.info("[Node: Indexer] Extraction complete.")
-
-        try:
-            vi_service.delete_video(azure_video_id)
-        except Exception as cleanup_err:
-            logger.warning(f"[Node: Indexer] Non-fatal cleanup failure: {cleanup_err}")
-
+        clean_data = vi_service.fetch_transcript_and_metadata(video_url)
         return clean_data
 
     except Exception as e:
         full_trace = traceback.format_exc()
-        logger.error(f"[Node: Indexer] Video Indexer failed:\n{full_trace}")
-
-        err_type = type(e).__name__
-        err_detail = str(e) if str(e) else "Unknown extraction error"
+        logger.error(f"[Node: Indexer] Direct transcript extraction failed:\n{full_trace}")
 
         return {
-            "errors": [f"{err_type}: {err_detail}"],
+            "errors": [f"{type(e).__name__}: {str(e)}"],
             "final_status": "fail",
             "transcript": "",
             "ocr_text": [],
@@ -109,7 +80,7 @@ def index_video_node(state: VideoAuditState) -> Dict[str, Any]:
 
 
 # --------------------------------------------------------------------------
-# NODE 2: Compliance Auditor Node (RAG + Azure Search + Groq LLM)
+# NODE 2: Compliance Auditor Node
 # --------------------------------------------------------------------------
 def audio_content_node(state: VideoAuditState) -> Dict[str, Any]:
     logger.info("[Node: Auditor] Querying knowledge base and LLM...")
@@ -118,29 +89,25 @@ def audio_content_node(state: VideoAuditState) -> Dict[str, Any]:
     ocr_text = state.get("ocr_text", [])
     errors = state.get("errors", [])
 
-    if not transcript and not ocr_text:
-        err_msg = errors[0] if errors else "Video processing failed to extract transcript or OCR text."
-        logger.warning(f"[Node: Auditor] Extraction failed. Reason: {err_msg}")
+    if not transcript:
+        err_msg = errors[0] if errors else "Failed to extract video transcript."
+        logger.warning(f"[Node: Auditor] Audit aborted. Reason: {err_msg}")
         return {
             "final_status": "fail",
             "final_report": f"Audit skipped due to extraction error: {err_msg}",
             "compliance_results": [],
         }
 
-    # 1. Initialize Groq Chat Model
     llm = ChatGroq(
         groq_api_key=os.getenv("GROQ_API_KEY"),
         model_name=os.getenv("GROQ_MODEL_NAME", "llama-3.3-70b-versatile"),
         temperature=0,
     )
 
-    # Enforce structured output via Pydantic schema
     structured_llm = llm.with_structured_output(AuditResult)
-
-    # 2. Retrieve Vector Store Singleton
     vector_store = get_vector_store()
 
-    query_text = (transcript + " " + " ".join(ocr_text)).strip()
+    query_text = transcript.strip()
     docs = vector_store.similarity_search(query_text, k=3)
     retrieved_rules = (
         "\n\n".join([doc.page_content for doc in docs]) if docs else "No specific compliance documents found."
@@ -155,7 +122,7 @@ Below are official regulatory rules retrieved from compliance documents:
 ---
 
 Instructions:
-1. Analyze the transcript and on-screen OCR text provided by the user.
+1. Analyze the transcript and metadata provided by the user.
 2. Identify any violations of compliance rules.
 3. Output the structured audit evaluation according to the required schema.
 If no violations are found, set "status" to "pass" and "compliance_results" to an empty list.
@@ -164,11 +131,9 @@ If no violations are found, set "status" to "pass" and "compliance_results" to a
     user_message = f"""
 Video Metadata: {state.get("video_metadata", {})}
 Transcript: {transcript}
-On-Screen OCR Text: {ocr_text}
 """
 
     try:
-        # Pydantic object returned directly by structured LLM invocation
         result: AuditResult = structured_llm.invoke(
             [SystemMessage(content=system_prompt), HumanMessage(content=user_message)]
         )
