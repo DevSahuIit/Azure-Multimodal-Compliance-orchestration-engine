@@ -1,10 +1,10 @@
 import os
 import logging
 import traceback
-import requests
 from typing import Dict, Any, List
 
 from pydantic import BaseModel, Field
+from fastembed import TextEmbedding
 from langchain_groq import ChatGroq
 from langchain_community.vectorstores import AzureSearch
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -19,40 +19,19 @@ logging.basicConfig(level=logging.INFO)
 _vector_store = None
 
 
-class GroqCompatibleEmbeddings:
+class FastEmbedWrapper:
     """
-    Lightweight embedding client using Hugging Face's hosted Inference API.
-    Replaces local PyTorch/transformers to keep memory usage minimal.
+    Lightweight ONNX-backed local embedding generator.
+    Runs fast on CPU with ~50MB RAM footprint and zero external network calls.
     """
-    def __init__(self, model: str = "sentence-transformers/all-MiniLM-L6-v2"):
-        # Updated HuggingFace Inference Router URL
-        self.api_url = f"https://router.huggingface.co/hf-inference/v1/pipeline/feature-extraction/{model}"
-        # Fallback URL in case router behavior varies by token tier
-        self.legacy_url = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{model}"
-        
-        token = os.getenv("HF_API_TOKEN")
-        self.headers = {"Authorization": f"Bearer {token}"} if token else {}
+    def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
+        # FastEmbed uses ONNX Runtime under the hood
+        self.model = TextEmbedding(model_name=model_name)
 
     def embed_query(self, text: str) -> List[float]:
-        for url in [self.api_url, self.legacy_url]:
-            try:
-                resp = requests.post(
-                    url, 
-                    headers=self.headers, 
-                    json={"inputs": text}, 
-                    timeout=15
-                )
-                resp.raise_for_status()
-                res = resp.json()
-                
-                if isinstance(res, list) and len(res) > 0 and isinstance(res[0], list):
-                    return res[0]
-                return res
-            except requests.exceptions.RequestException as e:
-                logger.warning(f"[Embeddings] Failed request to {url}: {e}")
-                continue
-                
-        raise RuntimeError("Failed to reach HuggingFace Embeddings API across all endpoints.")
+        # fastembed returns a generator yielding numpy arrays
+        embeddings = list(self.model.embed([text]))
+        return embeddings[0].tolist()
 
 
 class ComplianceViolation(BaseModel):
@@ -70,8 +49,8 @@ class AuditResult(BaseModel):
 def get_vector_store() -> AzureSearch:
     global _vector_store
     if _vector_store is None:
-        logger.info("[Initialization] Connecting to Azure Search with hosted embeddings...")
-        embeddings = GroqCompatibleEmbeddings()
+        logger.info("[Initialization] Loading FastEmbed (ONNX) lightweight embeddings...")
+        embeddings = FastEmbedWrapper()
         _vector_store = AzureSearch(
             azure_search_endpoint=os.getenv("AZURE_SEARCH_ENDPOINT"),
             azure_search_key=os.getenv("AZURE_SEARCH_API_KEY"),

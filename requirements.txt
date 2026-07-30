@@ -30,6 +30,7 @@ langchain-community>=0.3.0
 langchain-groq>=0.2.0
 langchain-ollama
 langgraph>=0.2.0
+fastembed>=0.2.0
 
 # Azure Services
 azure-identity>=1.15.0
