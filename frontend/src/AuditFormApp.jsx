@@ -20,7 +20,8 @@ import {
   Clock,
   X,
   CheckCircle2,
-  XCircle
+  XCircle,
+  Lightbulb
 } from 'lucide-react';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || 'https://brand-guardian-api-bloi.onrender.com').replace(/\/$/, '');
@@ -28,13 +29,45 @@ const API_BASE_URL = (import.meta.env.VITE_API_URL || 'https://brand-guardian-ap
 const ALLOWED_EXTENSIONS = ['.mp4', '.mov', '.mkv', '.webm', '.avi', '.m4v'];
 const MAX_FILE_MB = 300;
 
-// Master list of compliance rules evaluated by the agent
+// Master list of compliance rules
 const MASTER_COMPLIANCE_RULES = [
   { key: 'logo', name: 'Brand Logo & On-Screen Placement', description: 'Checks for clear logo visibility and accurate brand positioning.' },
   { key: 'audio', name: 'Required Audio & Verbal Disclaimers', description: 'Ensures compulsory legal disclaimers and disclosures are spoken clearly.' },
   { key: 'content', name: 'Content Safety & Profanity Policy', description: 'Scans speech and visual text for prohibited or restricted content.' },
   { key: 'visual_text', name: 'On-Screen Text & Typography Compliance', description: 'Verifies OCR text overlay accuracy against regulatory standards.' }
 ];
+
+// Helper function to dynamically calculate compliance score based on severity
+function calculateDynamicScore(violations = []) {
+  if (!violations || violations.length === 0) return 100;
+
+  let deduction = 0;
+  violations.forEach((v) => {
+    const severity = (v.severity || 'medium').toLowerCase();
+    if (severity === 'critical') deduction += 25;
+    else if (severity === 'high') deduction += 15;
+    else if (severity === 'medium') deduction += 10; // e.g. 1 breach = 90%
+    else deduction += 5;
+  });
+
+  return Math.max(0, 100 - deduction);
+}
+
+// Dynamic recommendation generator for failed checks
+function getRecommendation(ruleKey, breach) {
+  if (breach?.description) {
+    return `Fix required: Address breach in "${breach.category || ruleKey}" — ${breach.description}`;
+  }
+  
+  const recommendations = {
+    logo: 'Action: Re-position brand logo in top-right or lower-third overlay with at least 80% opacity.',
+    audio: 'Action: Add a spoken legal disclaimer in the final 5 seconds of the audio track.',
+    content: 'Action: Mute or replace flagged terminology/audio segments to meet broadcast compliance.',
+    visual_text: 'Action: Increase subtitle text contrast ratio and adjust frame duration for readability.'
+  };
+
+  return recommendations[ruleKey] || 'Action: Review brand guideline manual and update asset before publishing.';
+}
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address.'),
@@ -245,6 +278,15 @@ export default function AuditFormApp() {
       setUploadProgress(0);
     }
   };
+
+  // Compute calculated metrics
+  const violationsList = auditResult?.compliance_results || [];
+  const calculatedScore = auditResult
+    ? (auditResult.compliance_score !== undefined && auditResult.compliance_score < 100
+        ? auditResult.compliance_score
+        : calculateDynamicScore(violationsList))
+    : 100;
+  const breachesCount = violationsList.length || auditResult?.violations_count || 0;
 
   if (!user) {
     return (
@@ -470,13 +512,11 @@ export default function AuditFormApp() {
                 >
                   <div className="flex justify-between items-center mb-1.5">
                     <span className="font-mono text-[10px] text-amber-400">{sess.session_id.slice(0, 8)}</span>
-                    {sess.compliance_score !== undefined && (
-                      <span className={`text-[10px] font-bold font-mono px-1.5 py-0.5 rounded ${
-                        sess.compliance_score >= 80 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                      }`}>
-                        {sess.compliance_score}/100
-                      </span>
-                    )}
+                    <span className={`text-[10px] font-bold font-mono px-1.5 py-0.5 rounded ${
+                      (sess.compliance_score ?? 100) >= 80 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                    }`}>
+                      {sess.compliance_score ?? calculateDynamicScore(sess.compliance_results)}/100
+                    </span>
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -605,7 +645,7 @@ export default function AuditFormApp() {
             </div>
           )}
 
-          {/* STEP 3: Result Header + Metrics + Final Log + Compliance Rules Checklist */}
+          {/* STEP 3: Results Header + Metrics + Log + Checklist & Actionable Recommendations */}
           {auditStep === 3 && auditResult && (
             <div className="space-y-6">
 
@@ -621,15 +661,16 @@ export default function AuditFormApp() {
                 </div>
               </div>
 
+              {/* Dynamic Score and Metrics Grid */}
               <div className="grid grid-cols-3 gap-3">
                 <div className="bg-slate-900/90 border border-slate-700/60 p-3.5 rounded-xl text-center flex flex-col justify-between items-center">
                   <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
                     <Activity className="w-3 h-3 text-amber-400" /> Score
                   </div>
                   <span className={`text-xl font-extrabold font-mono ${
-                    (auditResult.compliance_score ?? 100) >= 80 ? 'text-emerald-400' : 'text-rose-400'
+                    calculatedScore >= 80 ? 'text-emerald-400' : 'text-rose-400'
                   }`}>
-                    {auditResult.compliance_score ?? 100}/100
+                    {calculatedScore}/100
                   </span>
                 </div>
 
@@ -647,7 +688,7 @@ export default function AuditFormApp() {
                     <AlertTriangle className="w-3 h-3 text-rose-400" /> Breaches
                   </div>
                   <span className="text-xl font-extrabold text-rose-400 font-mono">
-                    {auditResult.violations_count ?? 0}
+                    {breachesCount}
                   </span>
                 </div>
               </div>
@@ -660,25 +701,24 @@ export default function AuditFormApp() {
               </div>
 
               {/* Message Box / Log window */}
-              <div className="bg-[#0F172A] border border-slate-700/60 rounded-xl p-4 text-xs font-mono text-slate-300 max-h-60 overflow-y-auto whitespace-pre-wrap">
+              <div className="bg-[#0F172A] border border-slate-700/60 rounded-xl p-4 text-xs font-mono text-slate-300 max-h-52 overflow-y-auto whitespace-pre-wrap">
                 {auditResult.final_report}
               </div>
 
-              {/* Compliance Rules Checklist Window */}
+              {/* Compliance Rules Checklist & Actionable Recommendations Window */}
               <div className="space-y-3 bg-[#0F172A] border border-slate-700/60 rounded-xl p-4 shadow-inner">
                 <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-amber-500" /> Policy Compliance Checklist
+                    <ShieldCheck className="w-4 h-4 text-amber-500" /> Policy Compliance & Fixes
                   </h3>
                   <span className="text-[11px] font-semibold text-slate-400">
-                    {MASTER_COMPLIANCE_RULES.length - (auditResult.violations_count || 0)} / {MASTER_COMPLIANCE_RULES.length} Passed
+                    {MASTER_COMPLIANCE_RULES.length - breachesCount} / {MASTER_COMPLIANCE_RULES.length} Passed
                   </span>
                 </div>
 
-                <div className="space-y-2 pt-1">
+                <div className="space-y-3 pt-1">
                   {MASTER_COMPLIANCE_RULES.map((rule) => {
-                    const violations = auditResult.compliance_results || [];
-                    const breach = violations.find(
+                    const breach = violationsList.find(
                       (v) =>
                         v.category?.toLowerCase().includes(rule.key) ||
                         rule.name.toLowerCase().includes(v.category?.toLowerCase())
@@ -688,37 +728,50 @@ export default function AuditFormApp() {
                     return (
                       <div
                         key={rule.key}
-                        className={`flex items-start justify-between p-3 rounded-xl border transition-all ${
+                        className={`p-3 rounded-xl border space-y-2 transition-all ${
                           isPassed
                             ? 'bg-emerald-500/5 border-emerald-500/20'
                             : 'bg-rose-500/5 border-rose-500/20'
                         }`}
                       >
-                        <div className="flex items-start gap-2.5 min-w-0 pr-2">
-                          {isPassed ? (
-                            <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
-                          ) : (
-                            <XCircle className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
-                          )}
-                          <div className="space-y-0.5 min-w-0">
-                            <p className={`text-xs font-semibold ${isPassed ? 'text-slate-200' : 'text-rose-200'}`}>
-                              {rule.name}
-                            </p>
-                            <p className="text-[11px] text-slate-400 leading-tight truncate">
-                              {breach ? breach.description : rule.description}
-                            </p>
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-start gap-2.5 min-w-0 pr-2">
+                            {isPassed ? (
+                              <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+                            ) : (
+                              <XCircle className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
+                            )}
+                            <div className="space-y-0.5 min-w-0">
+                              <p className={`text-xs font-semibold ${isPassed ? 'text-slate-200' : 'text-rose-200'}`}>
+                                {rule.name}
+                              </p>
+                              <p className="text-[11px] text-slate-400 leading-tight">
+                                {breach ? breach.description : rule.description}
+                              </p>
+                            </div>
                           </div>
+
+                          <span
+                            className={`text-[10px] font-bold font-mono px-2 py-0.5 rounded uppercase flex-shrink-0 ${
+                              isPassed
+                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                            }`}
+                          >
+                            {isPassed ? 'PASSED ✓' : `${breach.severity || 'FAILED'} ✕`}
+                          </span>
                         </div>
 
-                        <span
-                          className={`text-[10px] font-bold font-mono px-2 py-0.5 rounded uppercase flex-shrink-0 ${
-                            isPassed
-                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                              : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                          }`}
-                        >
-                          {isPassed ? 'PASSED ✓' : `${breach.severity || 'FAILED'} ✕`}
-                        </span>
+                        {/* AI Recommendation Banner for Failed Checks */}
+                        {!isPassed && (
+                          <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-2.5 flex items-start gap-2 text-[11px] text-amber-300">
+                            <Lightbulb className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                            <div>
+                              <span className="font-bold block text-amber-400">AI Recommendation:</span>
+                              <p className="text-slate-300 leading-relaxed">{getRecommendation(rule.key, breach)}</p>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
