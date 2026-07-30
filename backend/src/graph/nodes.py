@@ -21,28 +21,38 @@ _vector_store = None
 
 class GroqCompatibleEmbeddings:
     """
-    Lightweight embedding client using HuggingFace's hosted Inference API.
-    Replaces local PyTorch/transformers to keep memory usage minimal (~0MB RAM vs ~500MB+).
+    Lightweight embedding client using Hugging Face's hosted Inference API.
+    Replaces local PyTorch/transformers to keep memory usage minimal.
     """
     def __init__(self, model: str = "sentence-transformers/all-MiniLM-L6-v2"):
-        self.api_url = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{model}"
+        # Updated HuggingFace Inference Router URL
+        self.api_url = f"https://router.huggingface.co/hf-inference/v1/pipeline/feature-extraction/{model}"
+        # Fallback URL in case router behavior varies by token tier
+        self.legacy_url = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{model}"
+        
         token = os.getenv("HF_API_TOKEN")
         self.headers = {"Authorization": f"Bearer {token}"} if token else {}
 
     def embed_query(self, text: str) -> List[float]:
-        resp = requests.post(
-            self.api_url, 
-            headers=self.headers, 
-            json={"inputs": text}, 
-            timeout=30
-        )
-        resp.raise_for_status()
-        res = resp.json()
-        
-        # Handle cases where HuggingFace returns nested list representations
-        if isinstance(res, list) and len(res) > 0 and isinstance(res[0], list):
-            return res[0]
-        return res
+        for url in [self.api_url, self.legacy_url]:
+            try:
+                resp = requests.post(
+                    url, 
+                    headers=self.headers, 
+                    json={"inputs": text}, 
+                    timeout=15
+                )
+                resp.raise_for_status()
+                res = resp.json()
+                
+                if isinstance(res, list) and len(res) > 0 and isinstance(res[0], list):
+                    return res[0]
+                return res
+            except requests.exceptions.RequestException as e:
+                logger.warning(f"[Embeddings] Failed request to {url}: {e}")
+                continue
+                
+        raise RuntimeError("Failed to reach HuggingFace Embeddings API across all endpoints.")
 
 
 class ComplianceViolation(BaseModel):
