@@ -15,7 +15,6 @@ from backend.src.services.video_indexer import VideoIndexerService
 logger = logging.getLogger("brand_guardian")
 logging.basicConfig(level=logging.INFO)
 
-# Singletons for RAG Vector Store
 _embeddings = None
 _vector_store = None
 
@@ -47,10 +46,10 @@ class AuditResult(BaseModel):
 
 
 # --------------------------------------------------------------------------
-# NODE 1: Lightweight In-Memory Indexer Node
+# NODE 1: Local Upload Indexer Node
 # --------------------------------------------------------------------------
 def index_video_node(state: VideoAuditState) -> Dict[str, Any]:
-    video_url = state.get("video_url")
+    local_file_path = state.get("local_file_path")
 
     if state.get("transcript"):
         logger.info("[Node: Indexer] Using cached transcript — skipping extraction.")
@@ -60,17 +59,25 @@ def index_video_node(state: VideoAuditState) -> Dict[str, Any]:
             "video_metadata": state.get("video_metadata", {}),
         }
 
-    logger.info(f"[Node: Indexer] Fetching transcript directly from URL: {video_url}")
+    if not local_file_path or not os.path.exists(local_file_path):
+        return {
+            "errors": ["No uploaded video file found for this session."],
+            "final_status": "fail",
+            "transcript": "",
+            "ocr_text": [],
+        }
+
+    logger.info(f"[Node: Indexer] Processing uploaded file: {local_file_path}")
 
     try:
         vi_service = VideoIndexerService()
-        clean_data = vi_service.fetch_transcript_and_metadata(video_url)
+        clean_data = vi_service.analyze_local_video(
+            local_file_path, original_filename=state.get("video_url", "")
+        )
         return clean_data
-
     except Exception as e:
         full_trace = traceback.format_exc()
-        logger.error(f"[Node: Indexer] Direct transcript extraction failed:\n{full_trace}")
-
+        logger.error(f"[Node: Indexer] Local video analysis failed:\n{full_trace}")
         return {
             "errors": [f"{type(e).__name__}: {str(e)}"],
             "final_status": "fail",
@@ -80,7 +87,7 @@ def index_video_node(state: VideoAuditState) -> Dict[str, Any]:
 
 
 # --------------------------------------------------------------------------
-# NODE 2: Compliance Auditor Node
+# NODE 2: Compliance Auditor Node (unchanged)
 # --------------------------------------------------------------------------
 def audio_content_node(state: VideoAuditState) -> Dict[str, Any]:
     logger.info("[Node: Auditor] Querying knowledge base and LLM...")
@@ -137,13 +144,11 @@ Transcript: {transcript}
         result: AuditResult = structured_llm.invoke(
             [SystemMessage(content=system_prompt), HumanMessage(content=user_message)]
         )
-
         return {
             "compliance_results": [c.model_dump() for c in result.compliance_results],
             "final_status": result.status,
             "final_report": result.final_report,
         }
-
     except Exception as e:
         logger.error(f"[Node: Auditor] System error in auditor node: {str(e)}")
         return {

@@ -1,21 +1,21 @@
 import os
-import re
 import json
 import uuid
 import time
+import hashlib
+import tempfile
 import logging
 import asyncio
-import requests
 import traceback
 from contextlib import asynccontextmanager
-from typing import List, Optional, Dict, Any
+from typing import Optional
 
 import bcrypt
 import libsql_experimental as libsql
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Depends, Header, status
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, EmailStr, HttpUrl
+from pydantic import BaseModel, EmailStr
 
 from backend.src.api.telemetry import setup_telemetry
 from backend.src.graph.workflow import app as compliance_graph
@@ -25,21 +25,16 @@ load_dotenv(override=True)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("api_server")
 
-
-def extract_youtube_id(url: str) -> Optional[str]:
-    match = re.search(r"(?:v=|youtu\.be/|embed/)([\w-]{11})", url)
-    return match.group(1) if match else None
+ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
+MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_MB", "300")) * 1024 * 1024
 
 
-def get_youtube_title(video_url: str) -> str:
-    try:
-        oembed_url = f"https://www.youtube.com/oembed?url={video_url}&format=json"
-        res = requests.get(oembed_url, timeout=3)
-        if res.status_code == 200:
-            return res.json().get("title", video_url)
-    except Exception as e:
-        logger.warning(f"Failed to fetch YouTube title via oEmbed: {str(e)}")
-    return video_url
+def compute_file_hash(file_path: str) -> str:
+    sha256 = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            sha256.update(chunk)
+    return sha256.hexdigest()
 
 
 def get_db_connection():
@@ -51,7 +46,6 @@ def get_db_connection():
     else:
         is_vercel = os.getenv("VERCEL") == "1"
         db_file = "/tmp/audit_sessions.db" if is_vercel else "audit_sessions.db"
-        # Set busy timeout to prevent concurrent lock failures
         return libsql.connect(db_file, timeout=30.0)
 
 
@@ -71,12 +65,14 @@ def init_db():
             )
         """)
 
+        # video_url now stores the ORIGINAL FILENAME of the upload, not a URL —
+        # column name kept as-is to avoid a schema migration on existing DBs.
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS audit_sessions (
                 session_id TEXT PRIMARY KEY,
                 user_email TEXT NOT NULL,
                 video_url TEXT NOT NULL,
-                video_title TEXT DEFAULT 'YouTube Asset',
+                video_title TEXT DEFAULT 'Uploaded Video',
                 status TEXT NOT NULL,
                 final_report TEXT,
                 compliance_score INTEGER DEFAULT 100,
@@ -87,9 +83,11 @@ def init_db():
             )
         """)
 
+        # Content-hash cache: re-uploading the exact same file skips
+        # re-transcription/re-audit entirely.
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS video_cache (
-                youtube_id TEXT PRIMARY KEY,
+                content_hash TEXT PRIMARY KEY,
                 transcript TEXT,
                 ocr_text TEXT,
                 video_metadata TEXT,
@@ -123,12 +121,12 @@ def invoke_compliance_graph(initial_inputs: dict) -> dict:
     return compliance_graph.invoke(initial_inputs)
 
 
-def read_video_cache(youtube_id: str) -> Optional[dict]:
+def read_video_cache(content_hash: str) -> Optional[dict]:
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT transcript, ocr_text, video_metadata FROM video_cache WHERE youtube_id = ?",
-        (youtube_id,),
+        "SELECT transcript, ocr_text, video_metadata FROM video_cache WHERE content_hash = ?",
+        (content_hash,),
     )
     row = cursor.fetchone()
     conn.close()
@@ -141,17 +139,17 @@ def read_video_cache(youtube_id: str) -> Optional[dict]:
     }
 
 
-def write_video_cache(youtube_id: str, transcript: str, ocr_text: list, video_metadata: dict):
+def write_video_cache(content_hash: str, transcript: str, ocr_text: list, video_metadata: dict):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        """INSERT INTO video_cache (youtube_id, transcript, ocr_text, video_metadata)
+        """INSERT INTO video_cache (content_hash, transcript, ocr_text, video_metadata)
            VALUES (?, ?, ?, ?)
-           ON CONFLICT(youtube_id) DO UPDATE SET
+           ON CONFLICT(content_hash) DO UPDATE SET
                transcript=excluded.transcript,
                ocr_text=excluded.ocr_text,
                video_metadata=excluded.video_metadata""",
-        (youtube_id, transcript, json.dumps(ocr_text), json.dumps(video_metadata)),
+        (content_hash, transcript, json.dumps(ocr_text), json.dumps(video_metadata)),
     )
     conn.commit()
     conn.close()
@@ -168,9 +166,9 @@ async def lifespan(app: FastAPI):
 
     try:
         vi_service = VideoIndexerService()
-        await asyncio.to_thread(vi_service.check_cookie_health)
+        await asyncio.to_thread(vi_service.check_health)
     except Exception as check_err:
-        logger.warning(f"Startup cookie health check encountered an issue: {str(check_err)}")
+        logger.warning(f"Startup health check encountered an issue: {str(check_err)}")
 
     logger.info("Application startup sequence complete.")
     yield
@@ -179,11 +177,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Brand Guardian AI API",
-    version="2.0.0",
+    version="3.0.0",
     lifespan=lifespan,
 )
 
-# Parsed allowed origins from ENV or fallbacks
 ALLOWED_ORIGINS = os.getenv(
     "ALLOWED_ORIGINS",
     "http://localhost:5173,https://azure-multimodal-compliance-orchest.vercel.app"
@@ -210,12 +207,8 @@ class UserLogIn(BaseModel):
     email: EmailStr
     password: str
 
-class AuditRequest(BaseModel):
-    email: EmailStr
-    video_url: str
-
 # -------------------------------------------------------------------
-# AUTHENTICATION ENDPOINTS
+# AUTHENTICATION ENDPOINTS (unchanged)
 # -------------------------------------------------------------------
 
 @app.post("/auth/signup", status_code=status.HTTP_201_CREATED)
@@ -320,27 +313,55 @@ async def get_user_sessions(email: str):
 
 
 @app.post("/audit")
-async def audit_video(request: AuditRequest):
+async def audit_video(email: str = Form(...), file: UploadFile = File(...)):
     session_id = str(uuid.uuid4())
     video_id_short = f"vid_{session_id[:8]}"
-    email_clean = request.email.lower().strip()
-    video_url_str = str(request.video_url).strip()
+    email_clean = email.lower().strip()
 
-    video_title = await asyncio.to_thread(get_youtube_title, video_url_str)
-    youtube_id = extract_youtube_id(video_url_str)
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in ALLOWED_VIDEO_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type '{ext}'. Allowed: {', '.join(sorted(ALLOWED_VIDEO_EXTENSIONS))}",
+        )
+
+    temp_path = os.path.join(tempfile.gettempdir(), f"upload_{session_id}{ext}")
+
+    # Stream to disk with a hard size cap instead of loading the whole file
+    # into memory — important for large video files on a modest Render plan.
+    total_bytes = 0
+    try:
+        with open(temp_path, "wb") as out_file:
+            while chunk := await file.read(1024 * 1024):
+                total_bytes += len(chunk)
+                if total_bytes > MAX_UPLOAD_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"File exceeds {MAX_UPLOAD_BYTES // (1024 * 1024)}MB limit.",
+                    )
+                out_file.write(chunk)
+    except HTTPException:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise
+    finally:
+        await file.close()
+
+    content_hash = await asyncio.to_thread(compute_file_hash, temp_path)
+    display_name = file.filename or "uploaded_video"
 
     initial_inputs = {
-        "video_url": video_url_str,
+        "video_url": display_name,  # repurposed: original filename, kept for schema compatibility
         "video_id": video_id_short,
+        "local_file_path": temp_path,
         "compliance_results": [],
         "errors": []
     }
 
-    if youtube_id:
-        cached = await asyncio.to_thread(read_video_cache, youtube_id)
-        if cached:
-            logger.info(f"[Session: {session_id}] Cache hit for YouTube ID {youtube_id}.")
-            initial_inputs.update(cached)
+    cached = await asyncio.to_thread(read_video_cache, content_hash)
+    if cached:
+        logger.info(f"[Session: {session_id}] Cache hit for uploaded file hash {content_hash[:12]}.")
+        initial_inputs.update(cached)
 
     start_time = time.time()
     try:
@@ -351,10 +372,10 @@ async def audit_video(request: AuditRequest):
         final_report = final_state.get("final_report", "No report generated.")
         compliance_results = final_state.get("compliance_results", [])
 
-        if youtube_id and final_state.get("transcript") and status_val != "fail":
+        if final_state.get("transcript") and status_val != "fail":
             await asyncio.to_thread(
                 write_video_cache,
-                youtube_id,
+                content_hash,
                 final_state.get("transcript", ""),
                 final_state.get("ocr_text", []),
                 final_state.get("video_metadata", {}),
@@ -369,7 +390,7 @@ async def audit_video(request: AuditRequest):
                 """INSERT INTO audit_sessions
                    (session_id, user_email, video_url, video_title, status, final_report, compliance_score, latency_sec, violations_count)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (session_id, email_clean, video_url_str, video_title, status_val, final_report, metrics["compliance_score"], execution_latency, metrics["violations_count"])
+                (session_id, email_clean, display_name, display_name, status_val, final_report, metrics["compliance_score"], execution_latency, metrics["violations_count"])
             )
             conn.commit()
             conn.close()
@@ -380,7 +401,7 @@ async def audit_video(request: AuditRequest):
             "session_id": session_id,
             "user_email": email_clean,
             "video_id": video_id_short,
-            "video_title": video_title,
+            "video_title": display_name,
             "status": status_val,
             "final_report": final_report,
             "compliance_score": metrics["compliance_score"],
@@ -404,7 +425,7 @@ async def audit_video(request: AuditRequest):
                     """INSERT INTO audit_sessions
                        (session_id, user_email, video_url, video_title, status, final_report, compliance_score, latency_sec, violations_count)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (session_id, email_clean, video_url_str, video_title, "FAILED", error_msg, 0, execution_latency, 0)
+                    (session_id, email_clean, display_name, display_name, "FAILED", error_msg, 0, execution_latency, 0)
                 )
                 conn.commit()
                 conn.close()
@@ -421,3 +442,6 @@ async def audit_video(request: AuditRequest):
             "transcript": "",
             "ocr_text": []
         }
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)

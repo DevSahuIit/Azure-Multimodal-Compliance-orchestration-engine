@@ -1,29 +1,30 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { z } from 'zod';
-import { 
-  ShieldCheck, 
-  Mail, 
-  Lock, 
-  User, 
-  KeyRound, 
-  ArrowRight, 
-  LogOut, 
-  History, 
-  Youtube, 
-  Loader2, 
+import {
+  ShieldCheck,
+  Mail,
+  Lock,
+  User,
+  KeyRound,
+  ArrowRight,
+  LogOut,
+  History,
+  UploadCloud,
+  FileVideo,
+  Loader2,
   RefreshCw,
   Bot,
   Activity,
   AlertTriangle,
-  Clock
+  Clock,
+  X
 } from 'lucide-react';
 
-// Sanitize base URL to ensure no trailing slash breaks routes
-// Inside frontend/src/AuditFormApp.jsx
-// Replace with your actual Render web service URL
-// Remove any trailing slash from the base URL:
 const API_BASE_URL = (import.meta.env.VITE_API_URL || 'https://brand-guardian-api-bloi.onrender.com').replace(/\/$/, '');
+
+const ALLOWED_EXTENSIONS = ['.mp4', '.mov', '.mkv', '.webm', '.avi', '.m4v'];
+const MAX_FILE_MB = 300;
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address.'),
@@ -36,10 +37,22 @@ const signupSchema = z.object({
   password: z.string().min(6, 'Password must be at least 6 characters long.')
 });
 
-const urlSchema = z.string().url('Please enter a valid YouTube URL.').refine(
-  val => val.includes('youtube.com') || val.includes('youtu.be'),
-  'Must be a valid YouTube link.'
-);
+function validateVideoFile(file) {
+  if (!file) return 'Please choose a video file.';
+  const ext = '.' + file.name.split('.').pop().toLowerCase();
+  if (!ALLOWED_EXTENSIONS.includes(ext)) {
+    return `Unsupported file type. Allowed: ${ALLOWED_EXTENSIONS.join(', ')}`;
+  }
+  if (file.size > MAX_FILE_MB * 1024 * 1024) {
+    return `File is too large. Max size is ${MAX_FILE_MB}MB.`;
+  }
+  return null;
+}
+
+function formatBytes(bytes) {
+  if (!bytes) return '0 MB';
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 export default function AuditFormApp() {
   const [user, setUser] = useState(() => {
@@ -62,10 +75,14 @@ export default function AuditFormApp() {
   const [authLoading, setAuthLoading] = useState(false);
 
   const [sessions, setSessions] = useState([]);
-  const [videoUrl, setVideoUrl] = useState('');
+  const [videoFile, setVideoFile] = useState(null);
+  const [fileError, setFileError] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [auditStep, setAuditStep] = useState(1);
   const [auditLoading, setAuditLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [auditResult, setAuditResult] = useState(null);
+  const fileInputRef = useRef(null);
 
   const fetchHistory = async (userEmail) => {
     try {
@@ -97,8 +114,8 @@ export default function AuditFormApp() {
       localStorage.setItem('guardian_user', JSON.stringify(res.data.user));
     } catch (err) {
       setAuthError(err.response?.data?.detail || 'Invalid email or password.');
-    } finally { 
-      setAuthLoading(false); 
+    } finally {
+      setAuthLoading(false);
     }
   };
 
@@ -170,23 +187,52 @@ export default function AuditFormApp() {
     setSessions([]);
   };
 
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const err = validateVideoFile(file);
+    if (err) {
+      setFileError(err);
+      setVideoFile(null);
+      return;
+    }
+    setFileError('');
+    setVideoFile(file);
+  };
+
+  const clearFile = () => {
+    setVideoFile(null);
+    setFileError('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   const handleRunAudit = async () => {
-    const urlValidation = urlSchema.safeParse(videoUrl);
-    if (!urlValidation.success) {
-      alert(urlValidation.error.errors[0].message);
+    if (!videoFile) {
+      setFileError('Please choose a video file first.');
       return;
     }
 
+    const formData = new FormData();
+    formData.append('email', user.email);
+    formData.append('file', videoFile);
+
     setAuditLoading(true);
+    setUploadProgress(0);
     try {
-      const res = await axios.post(`${API_BASE_URL}/audit`, { email: user.email, video_url: videoUrl });
+      const res = await axios.post(`${API_BASE_URL}/audit`, formData, {
+        onUploadProgress: (evt) => {
+          if (evt.total) setUploadProgress(Math.round((evt.loaded / evt.total) * 100));
+        },
+      });
       setAuditResult(res.data);
+      setDisplayName(videoFile.name);
       setAuditStep(3);
       fetchHistory(user.email);
     } catch (err) {
       alert(err.response?.data?.detail || 'Audit pipeline request failed.');
     } finally {
       setAuditLoading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -210,7 +256,7 @@ export default function AuditFormApp() {
                   Autonomous Multi-Modal Compliance Verification
                 </h2>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  Real-time video compliance verification powered by <strong className="text-amber-400 font-semibold">Agentic AI reasoning</strong>.
+                  Upload a video to run real-time compliance verification powered by <strong className="text-amber-400 font-semibold">Agentic AI reasoning</strong>.
                 </p>
               </div>
             </div>
@@ -354,7 +400,7 @@ export default function AuditFormApp() {
 
   return (
     <div className="w-full max-w-7xl mx-auto my-6 flex flex-col md:flex-row gap-6 min-h-[600px] border border-slate-700/60 rounded-3xl bg-[#1E293B] overflow-hidden shadow-2xl">
-      
+
       {/* Sidebar */}
       <aside className="w-full md:w-80 bg-[#0F172A] border-b md:border-b-0 md:border-r border-slate-700/60 p-5 flex flex-col justify-between flex-shrink-0">
         <div className="space-y-6">
@@ -364,8 +410,8 @@ export default function AuditFormApp() {
                 <ShieldCheck className="w-6 h-6 text-amber-500" />
                 <span className="font-bold text-base text-white">Vigilant Agent</span>
               </div>
-              <button 
-                onClick={handleLogout} 
+              <button
+                onClick={handleLogout}
                 title="Sign Out"
                 className="p-1.5 text-slate-400 hover:text-rose-400 transition rounded-lg hover:bg-slate-800 cursor-pointer"
               >
@@ -404,9 +450,9 @@ export default function AuditFormApp() {
                       compliance_score: sess.compliance_score,
                       latency_sec: sess.latency_sec,
                       violations_count: sess.violations_count,
-                      video_title: sess.video_title || 'YouTube Video'
+                      video_title: sess.video_title || 'Uploaded Video'
                     });
-                    setVideoUrl(sess.video_url);
+                    setDisplayName(sess.video_url);
                     setAuditStep(3);
                   }}
                   className="w-full text-left bg-slate-800/40 hover:bg-slate-800 border border-slate-700/50 rounded-xl p-3 text-xs block transition group"
@@ -422,9 +468,8 @@ export default function AuditFormApp() {
                     )}
                   </div>
 
-                  {/* YouTube Icon + Video Title */}
                   <div className="flex items-center gap-2">
-                    <Youtube className="w-4 h-4 text-rose-500 flex-shrink-0 group-hover:scale-110 transition-transform" />
+                    <FileVideo className="w-4 h-4 text-amber-400 flex-shrink-0 group-hover:scale-110 transition-transform" />
                     <p className="text-slate-200 font-medium text-xs truncate leading-tight">
                       {sess.video_title || sess.video_url}
                     </p>
@@ -436,7 +481,7 @@ export default function AuditFormApp() {
         </div>
 
         <button
-          onClick={() => { setAuditStep(1); setVideoUrl(''); setAuditResult(null); }}
+          onClick={() => { setAuditStep(1); clearFile(); setAuditResult(null); }}
           className="w-full mt-4 bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-bold py-2.5 rounded-xl flex items-center justify-center gap-2 text-xs transition hover:brightness-110 cursor-pointer"
         >
           <RefreshCw className="w-3.5 h-3.5" /> New Audit Request
@@ -446,31 +491,49 @@ export default function AuditFormApp() {
       {/* Main Workspace */}
       <main className="flex-1 flex items-center justify-center p-6 bg-[#0F172A]">
         <div className="w-full max-w-xl bg-[#1E293B] border border-slate-700/60 rounded-2xl p-6 md:p-8 shadow-xl">
-          
+
           {auditStep === 1 && (
             <div className="space-y-6">
               <div>
                 <h2 className="text-2xl font-bold text-white">Start Agentic Video Audit</h2>
-                <p className="text-slate-400 text-sm mt-1">Multi-modal extraction with autonomous policy reasoning.</p>
+                <p className="text-slate-400 text-sm mt-1">Upload a video from your computer for multi-modal extraction with autonomous policy reasoning.</p>
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase text-slate-300">YouTube URL</label>
-                <div className="relative">
-                  <Youtube className="absolute left-3.5 top-3.5 w-5 h-5 text-rose-500" />
-                  <input
-                    type="url"
-                    value={videoUrl}
-                    onChange={(e) => setVideoUrl(e.target.value)}
-                    placeholder="https://www.youtube.com/watch?v=..."
-                    className="w-full bg-slate-800/80 border border-slate-700 rounded-xl py-3 pl-11 pr-4 text-slate-100 focus:outline-none focus:border-amber-500 text-sm"
-                  />
-                </div>
+                <label className="text-xs font-semibold uppercase text-slate-300">Video File</label>
+
+                {!videoFile ? (
+                  <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-700 rounded-xl py-10 px-4 cursor-pointer hover:border-amber-500/60 hover:bg-slate-800/40 transition">
+                    <UploadCloud className="w-8 h-8 text-amber-500" />
+                    <span className="text-sm text-slate-300 font-medium">Click to choose a video file</span>
+                    <span className="text-[11px] text-slate-500">MP4, MOV, MKV, WEBM, AVI — up to {MAX_FILE_MB}MB</span>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="video/*"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                    />
+                  </label>
+                ) : (
+                  <div className="flex items-center gap-3 bg-slate-800/80 border border-slate-700 rounded-xl py-3 px-4">
+                    <FileVideo className="w-6 h-6 text-amber-500 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-slate-100 font-medium truncate">{videoFile.name}</p>
+                      <p className="text-[11px] text-slate-500">{formatBytes(videoFile.size)}</p>
+                    </div>
+                    <button onClick={clearFile} className="p-1 text-slate-400 hover:text-rose-400 transition cursor-pointer">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+
+                {fileError && <p className="text-xs text-rose-400">{fileError}</p>}
               </div>
 
-              <button 
-                onClick={() => setAuditStep(2)} 
-                disabled={!videoUrl.trim()} 
+              <button
+                onClick={() => setAuditStep(2)}
+                disabled={!videoFile}
                 className="w-full bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition hover:brightness-110 cursor-pointer disabled:opacity-50"
               >
                 Continue <ArrowRight className="w-4 h-4" />
@@ -485,28 +548,44 @@ export default function AuditFormApp() {
                 <p className="text-slate-400 text-xs mt-1">Run Agentic AI extraction and Groq compliance reasoning.</p>
               </div>
 
-              <div className="bg-slate-800/80 border border-slate-700 rounded-xl p-3.5 text-xs">
-                <span className="text-slate-400 font-semibold block mb-1">TARGET URL</span>
-                <p className="text-amber-400 font-mono truncate">{videoUrl}</p>
+              <div className="bg-slate-800/80 border border-slate-700 rounded-xl p-3.5 text-xs flex items-center gap-2">
+                <FileVideo className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                <div className="min-w-0">
+                  <span className="text-slate-400 font-semibold block mb-1">FILE TO AUDIT</span>
+                  <p className="text-amber-400 font-mono truncate">{videoFile?.name}</p>
+                </div>
               </div>
 
               {auditLoading && (
-                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-400 flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Executing Agentic Compliance Orchestration Engine...</span>
+                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-400 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>
+                      {uploadProgress < 100
+                        ? `Uploading video... ${uploadProgress}%`
+                        : 'Executing Agentic Compliance Orchestration Engine...'}
+                    </span>
+                  </div>
+                  <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-amber-500 transition-all"
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
                 </div>
               )}
 
               <div className="flex gap-3">
-                <button 
-                  onClick={() => setAuditStep(1)} 
-                  className="w-1/3 border border-slate-700 text-slate-300 py-2.5 rounded-xl text-xs hover:bg-slate-800 transition cursor-pointer"
+                <button
+                  onClick={() => setAuditStep(1)}
+                  disabled={auditLoading}
+                  className="w-1/3 border border-slate-700 text-slate-300 py-2.5 rounded-xl text-xs hover:bg-slate-800 transition cursor-pointer disabled:opacity-50"
                 >
                   Back
                 </button>
-                <button 
-                  onClick={handleRunAudit} 
-                  disabled={auditLoading} 
+                <button
+                  onClick={handleRunAudit}
+                  disabled={auditLoading}
                   className="w-2/3 bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-bold py-2.5 rounded-xl text-xs flex justify-center items-center gap-2 transition hover:brightness-110 cursor-pointer"
                 >
                   {auditLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Run Agent Engine'}
@@ -515,25 +594,22 @@ export default function AuditFormApp() {
             </div>
           )}
 
-          {/* STEP 3: Active Video Title Header + Metrics + Final Log */}
+          {/* STEP 3: Result Header + Metrics + Final Log */}
           {auditStep === 3 && auditResult && (
             <div className="space-y-6">
-              
-              {/* Active YouTube Media Asset Card */}
+
               <div className="bg-slate-900/90 border border-slate-700/60 rounded-xl p-3.5 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center flex-shrink-0">
-                  <Youtube className="w-5 h-5 text-rose-500" />
+                <div className="w-9 h-9 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center flex-shrink-0">
+                  <FileVideo className="w-5 h-5 text-amber-500" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Audited Media Asset</span>
                   <h3 className="text-sm font-semibold text-white truncate">
-                    {auditResult.video_title || 'YouTube Video'}
+                    {auditResult.video_title || displayName || 'Uploaded Video'}
                   </h3>
-                  <p className="text-[11px] font-mono text-amber-400/90 truncate">{videoUrl}</p>
                 </div>
               </div>
 
-              {/* Metric Cards Grid */}
               <div className="grid grid-cols-3 gap-3">
                 <div className="bg-slate-900/90 border border-slate-700/60 p-3.5 rounded-xl text-center flex flex-col justify-between items-center">
                   <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
@@ -565,7 +641,6 @@ export default function AuditFormApp() {
                 </div>
               </div>
 
-              {/* Findings Header */}
               <div className="flex justify-between items-center border-b border-slate-700/60 pb-3">
                 <h2 className="text-lg font-bold text-white">Agent Findings & Audit Log</h2>
                 <span className="text-[10px] font-mono bg-amber-500/10 text-amber-400 px-2 py-1 rounded border border-amber-500/20">
@@ -573,7 +648,6 @@ export default function AuditFormApp() {
                 </span>
               </div>
 
-              {/* Final Report Body */}
               <div className="bg-[#0F172A] border border-slate-700/60 rounded-xl p-4 text-xs font-mono text-slate-300 max-h-80 overflow-y-auto whitespace-pre-wrap">
                 {auditResult.final_report}
               </div>
