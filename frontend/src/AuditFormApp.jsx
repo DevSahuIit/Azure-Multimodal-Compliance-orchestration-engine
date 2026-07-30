@@ -18,13 +18,23 @@ import {
   Activity,
   AlertTriangle,
   Clock,
-  X
+  X,
+  CheckCircle2,
+  XCircle
 } from 'lucide-react';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || 'https://brand-guardian-api-bloi.onrender.com').replace(/\/$/, '');
 
 const ALLOWED_EXTENSIONS = ['.mp4', '.mov', '.mkv', '.webm', '.avi', '.m4v'];
 const MAX_FILE_MB = 300;
+
+// Master list of compliance rules evaluated by the agent
+const MASTER_COMPLIANCE_RULES = [
+  { key: 'logo', name: 'Brand Logo & On-Screen Placement', description: 'Checks for clear logo visibility and accurate brand positioning.' },
+  { key: 'audio', name: 'Required Audio & Verbal Disclaimers', description: 'Ensures compulsory legal disclaimers and disclosures are spoken clearly.' },
+  { key: 'content', name: 'Content Safety & Profanity Policy', description: 'Scans speech and visual text for prohibited or restricted content.' },
+  { key: 'visual_text', name: 'On-Screen Text & Typography Compliance', description: 'Verifies OCR text overlay accuracy against regulatory standards.' }
+];
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address.'),
@@ -447,6 +457,7 @@ export default function AuditFormApp() {
                       session_id: sess.session_id,
                       status: sess.status,
                       final_report: sess.final_report,
+                      compliance_results: sess.compliance_results || [],
                       compliance_score: sess.compliance_score,
                       latency_sec: sess.latency_sec,
                       violations_count: sess.violations_count,
@@ -594,7 +605,7 @@ export default function AuditFormApp() {
             </div>
           )}
 
-          {/* STEP 3: Result Header + Metrics + Final Log */}
+          {/* STEP 3: Result Header + Metrics + Final Log + Compliance Rules Checklist */}
           {auditStep === 3 && auditResult && (
             <div className="space-y-6">
 
@@ -648,8 +659,70 @@ export default function AuditFormApp() {
                 </span>
               </div>
 
-              <div className="bg-[#0F172A] border border-slate-700/60 rounded-xl p-4 text-xs font-mono text-slate-300 max-h-80 overflow-y-auto whitespace-pre-wrap">
+              {/* Message Box / Log window */}
+              <div className="bg-[#0F172A] border border-slate-700/60 rounded-xl p-4 text-xs font-mono text-slate-300 max-h-60 overflow-y-auto whitespace-pre-wrap">
                 {auditResult.final_report}
+              </div>
+
+              {/* Compliance Rules Checklist Window */}
+              <div className="space-y-3 bg-[#0F172A] border border-slate-700/60 rounded-xl p-4 shadow-inner">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-amber-500" /> Policy Compliance Checklist
+                  </h3>
+                  <span className="text-[11px] font-semibold text-slate-400">
+                    {MASTER_COMPLIANCE_RULES.length - (auditResult.violations_count || 0)} / {MASTER_COMPLIANCE_RULES.length} Passed
+                  </span>
+                </div>
+
+                <div className="space-y-2 pt-1">
+                  {MASTER_COMPLIANCE_RULES.map((rule) => {
+                    const violations = auditResult.compliance_results || [];
+                    const breach = violations.find(
+                      (v) =>
+                        v.category?.toLowerCase().includes(rule.key) ||
+                        rule.name.toLowerCase().includes(v.category?.toLowerCase())
+                    );
+                    const isPassed = !breach;
+
+                    return (
+                      <div
+                        key={rule.key}
+                        className={`flex items-start justify-between p-3 rounded-xl border transition-all ${
+                          isPassed
+                            ? 'bg-emerald-500/5 border-emerald-500/20'
+                            : 'bg-rose-500/5 border-rose-500/20'
+                        }`}
+                      >
+                        <div className="flex items-start gap-2.5 min-w-0 pr-2">
+                          {isPassed ? (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+                          ) : (
+                            <XCircle className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
+                          )}
+                          <div className="space-y-0.5 min-w-0">
+                            <p className={`text-xs font-semibold ${isPassed ? 'text-slate-200' : 'text-rose-200'}`}>
+                              {rule.name}
+                            </p>
+                            <p className="text-[11px] text-slate-400 leading-tight truncate">
+                              {breach ? breach.description : rule.description}
+                            </p>
+                          </div>
+                        </div>
+
+                        <span
+                          className={`text-[10px] font-bold font-mono px-2 py-0.5 rounded uppercase flex-shrink-0 ${
+                            isPassed
+                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                              : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                          }`}
+                        >
+                          {isPassed ? 'PASSED ✓' : `${breach.severity || 'FAILED'} ✕`}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
             </div>
