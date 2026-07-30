@@ -27,7 +27,30 @@ logger = logging.getLogger("api_server")
 
 ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_MB", "300")) * 1024 * 1024
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    setup_telemetry()
+    await asyncio.to_thread(init_db)
 
+    try:
+        vi_service = VideoIndexerService()
+        await asyncio.to_thread(vi_service.check_health)
+    except Exception as check_err:
+        logger.warning(f"Startup health check encountered an issue: {str(check_err)}")
+
+    # Pre-warm the embeddings model + Azure Search connection here, so a slow
+    # first-time HuggingFace model download happens visibly at deploy time —
+    # not silently inside the first user's request.
+    try:
+        from backend.src.graph.nodes import get_vector_store
+        await asyncio.to_thread(get_vector_store)
+        logger.info("Vector store pre-warmed successfully.")
+    except Exception as e:
+        logger.warning(f"Vector store pre-warm failed (will retry on first request): {e}")
+
+    logger.info("Application startup sequence complete.")
+    yield
+    logger.info("Application shutting down.")
 
 def compute_file_hash(file_path: str) -> str:
     sha256 = hashlib.sha256()

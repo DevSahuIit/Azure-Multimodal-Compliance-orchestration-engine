@@ -1,11 +1,11 @@
 import os
 import logging
 import traceback
+import requests
 from typing import Dict, Any, List
 
 from pydantic import BaseModel, Field
 from langchain_groq import ChatGroq
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import AzureSearch
 from langchain_core.messages import SystemMessage, HumanMessage
 
@@ -15,22 +15,34 @@ from backend.src.services.video_indexer import VideoIndexerService
 logger = logging.getLogger("brand_guardian")
 logging.basicConfig(level=logging.INFO)
 
-_embeddings = None
+# Global vector store cache
 _vector_store = None
 
 
-def get_vector_store() -> AzureSearch:
-    global _embeddings, _vector_store
-    if _vector_store is None:
-        logger.info("[Initialization] Loading Embeddings & Azure Vector Store...")
-        _embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-        _vector_store = AzureSearch(
-            azure_search_endpoint=os.getenv("AZURE_SEARCH_ENDPOINT"),
-            azure_search_key=os.getenv("AZURE_SEARCH_API_KEY"),
-            index_name=os.getenv("AZURE_SEARCH_INDEX_NAME"),
-            embedding_function=_embeddings.embed_query,
+class GroqCompatibleEmbeddings:
+    """
+    Lightweight embedding client using HuggingFace's hosted Inference API.
+    Replaces local PyTorch/transformers to keep memory usage minimal (~0MB RAM vs ~500MB+).
+    """
+    def __init__(self, model: str = "sentence-transformers/all-MiniLM-L6-v2"):
+        self.api_url = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{model}"
+        token = os.getenv("HF_API_TOKEN")
+        self.headers = {"Authorization": f"Bearer {token}"} if token else {}
+
+    def embed_query(self, text: str) -> List[float]:
+        resp = requests.post(
+            self.api_url, 
+            headers=self.headers, 
+            json={"inputs": text}, 
+            timeout=30
         )
-    return _vector_store
+        resp.raise_for_status()
+        res = resp.json()
+        
+        # Handle cases where HuggingFace returns nested list representations
+        if isinstance(res, list) and len(res) > 0 and isinstance(res[0], list):
+            return res[0]
+        return res
 
 
 class ComplianceViolation(BaseModel):
@@ -43,6 +55,21 @@ class AuditResult(BaseModel):
     compliance_results: List[ComplianceViolation] = Field(default_factory=list)
     status: str = Field(description="Result status: 'pass' or 'fail'")
     final_report: str = Field(description="Detailed Markdown summary of findings")
+
+
+def get_vector_store() -> AzureSearch:
+    global _vector_store
+    if _vector_store is None:
+        logger.info("[Initialization] Connecting to Azure Search with hosted embeddings...")
+        embeddings = GroqCompatibleEmbeddings()
+        _vector_store = AzureSearch(
+            azure_search_endpoint=os.getenv("AZURE_SEARCH_ENDPOINT"),
+            azure_search_key=os.getenv("AZURE_SEARCH_API_KEY"),
+            index_name=os.getenv("AZURE_SEARCH_INDEX_NAME"),
+            embedding_function=embeddings.embed_query,
+        )
+        logger.info("[Initialization] Azure Search vector store ready.")
+    return _vector_store
 
 
 # --------------------------------------------------------------------------
@@ -87,7 +114,7 @@ def index_video_node(state: VideoAuditState) -> Dict[str, Any]:
 
 
 # --------------------------------------------------------------------------
-# NODE 2: Compliance Auditor Node (unchanged)
+# NODE 2: Compliance Auditor Node
 # --------------------------------------------------------------------------
 def audio_content_node(state: VideoAuditState) -> Dict[str, Any]:
     logger.info("[Node: Auditor] Querying knowledge base and LLM...")
@@ -109,13 +136,25 @@ def audio_content_node(state: VideoAuditState) -> Dict[str, Any]:
         groq_api_key=os.getenv("GROQ_API_KEY"),
         model_name=os.getenv("GROQ_MODEL_NAME", "llama-3.3-70b-versatile"),
         temperature=0,
+        request_timeout=60,
+        max_retries=2,
     )
 
     structured_llm = llm.with_structured_output(AuditResult)
+
+    logger.info("[Node: Auditor] Loading vector store...")
     vector_store = get_vector_store()
+    logger.info("[Node: Auditor] Vector store ready. Running similarity search...")
 
     query_text = transcript.strip()
-    docs = vector_store.similarity_search(query_text, k=3)
+    try:
+        docs = vector_store.similarity_search(query_text, k=3)
+    except Exception as e:
+        logger.error(f"[Node: Auditor] Azure Search query failed/timed out: {e}")
+        docs = []
+
+    logger.info(f"[Node: Auditor] Retrieved {len(docs)} rule document(s). Invoking LLM...")
+
     retrieved_rules = (
         "\n\n".join([doc.page_content for doc in docs]) if docs else "No specific compliance documents found."
     )
@@ -144,6 +183,7 @@ Transcript: {transcript}
         result: AuditResult = structured_llm.invoke(
             [SystemMessage(content=system_prompt), HumanMessage(content=user_message)]
         )
+        logger.info("[Node: Auditor] LLM invocation complete.")
         return {
             "compliance_results": [c.model_dump() for c in result.compliance_results],
             "final_status": result.status,
