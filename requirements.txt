@@ -16,7 +16,6 @@ langgraph>=0.0.38
 azure-identity>=1.15.0
 azure-search-documents>=12.0.0
 azure-monitor-opentelemetry>=1.4.0
-yt-dlp>=2026.7.4
 langchain-groq
 langchain-ollama
 langchain-huggingface
@@ -33,7 +32,7 @@ bcrypt>=4.1.2
 libsql-experimental>=0.0.34
 
 # Lightweight YouTube API & Scrapers (In-Memory, No Downloads)
-youtube-transcript-api>=0.6.2
+youtube-transcript-api --upgrade
 yt-dlp>=2024.3.10  # Used ONLY for in-memory metadata fetching
 
 # Orchestration & LLM / RAG
