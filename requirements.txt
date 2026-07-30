@@ -32,7 +32,7 @@ bcrypt>=4.1.2
 libsql-experimental>=0.0.34
 
 # Lightweight YouTube API & Scrapers (In-Memory, No Downloads)
-youtube-transcript-api --upgrade
+youtube-transcript-api 
 yt-dlp>=2024.3.10  # Used ONLY for in-memory metadata fetching
 
 # Orchestration & LLM / RAG
